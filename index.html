@@ -51,7 +51,7 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 /* ================== CONFIGURACION ================== */
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGTmOzuslpDP2U9k_luyANTyAa_EhGxZ0x-rtyoimFYiNE-kcDqXvoelh3au-ThXhI/exec';
+const APPS_SCRIPT_URL = 'PON_AQUI_LA_URL_DE_TU_APPS_SCRIPT_DESPLEGADO';
 
 /* ================== ESTADO ================== */
 let sesion = null;      // {usuario, rol, nombre}
@@ -77,6 +77,41 @@ async function llamarBackend(payload){
 async function cargarDatos(){
   const res = await fetch(APPS_SCRIPT_URL);
   dataCache = await res.json();
+  aplicarMediacionesProfitGuard();
+  sincronizarMediacionesConSheet(); // no se espera (fire and forget), no debe bloquear la pantalla
+}
+
+// Cruza lo que trae ProfitGuard (status=in_mediation) con la planilla local.
+// Si una orden de ProfitGuard no existe en la planilla, no se pierde: se guarda
+// en dataCache.mediacionesSinMatch para que se pueda revisar/registrar a mano.
+function aplicarMediacionesProfitGuard(){
+  dataCache.mediacionesSinMatch = [];
+  const mediaciones = dataCache.mediacionesProfitGuard || [];
+  mediaciones.forEach(m=>{
+    const fila = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === m.numeroDeOrden.trim());
+    if(fila){
+      if(fila['En mediacion'] !== 'Si'){
+        fila['En mediacion'] = 'Si';
+        fila['_mediacionAutoDetectada'] = true;
+      }
+    } else {
+      dataCache.mediacionesSinMatch.push(m);
+    }
+  });
+}
+
+// Guarda en la planilla, en segundo plano, las mediaciones que la API detectó
+// pero que la planilla todavia no tenia marcadas. Asi la próxima vez que alguien
+// abra la app (o revise la planilla directo) ya queda registrado, sin que dependa
+// de que alguien entre justo a la pantalla de Mediación.
+async function sincronizarMediacionesConSheet(){
+  const pendientes = dataCache.devoluciones.filter(d => d._mediacionAutoDetectada);
+  for(const fila of pendientes){
+    try{
+      await llamarBackend({action:'actualizar', data:{ _row: fila._row, 'En mediacion': 'Si' }});
+      delete fila._mediacionAutoDetectada;
+    }catch(err){ /* si falla, se reintenta la próxima vez que se abra la app */ }
+  }
 }
 
 const ESTADOS_GESTION = [
@@ -99,6 +134,7 @@ function render(){
       <button data-p="home" class="${pantalla==='home'?'activo':''}">Inicio</button>
       <button data-p="recibir" class="${pantalla==='recibir'?'activo':''}">Recibir</button>
       <button data-p="gestionar" class="${pantalla==='gestionar'?'activo':''}">Pendientes</button>
+      <button data-p="mediacion" class="${pantalla==='mediacion'?'activo':''}">Mediación</button>
     </nav>
   `;
   document.getElementById('logout').onclick = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
@@ -110,6 +146,7 @@ function render(){
   if (pantalla==='home') main.innerHTML = vistaHome();
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
+  if (pantalla==='mediacion') { main.innerHTML = vistaMediacion(); ligarMediacion(); }
 }
 
 /* ================== LOGIN ================== */
@@ -159,12 +196,25 @@ function vistaHome(){
   });
   const abiertas = devs.filter(d=>(d['Estado de gestion']||'Pendiente recepcion') !== 'Cerrado').length;
 
+  const enMediacion = devs.filter(d => d['En mediacion']==='Si' && d['Resultado mediacion'] !== 'Favor nuestro' && d['Resultado mediacion'] !== 'Favor comprador');
+  const hoy = new Date();
+  const urgentes = enMediacion.filter(d=>{
+    if(!d['Plazo respuesta mediacion']) return false;
+    const dias = (new Date(d['Plazo respuesta mediacion']) - hoy) / 86400000;
+    return dias <= 2;
+  });
+
   return `
     <div class="card">
       <h3 style="margin-top:0;">Resumen</h3>
       <p style="font-size:28px;margin:0;font-weight:700;color:#E94D1A;">${abiertas}</p>
       <p style="margin:0;color:#878785;font-size:13px;">devoluciones sin cerrar</p>
     </div>
+    ${enMediacion.length ? `
+    <div class="card" style="border:2px solid ${urgentes.length ? '#c0392b' : '#ba7517'};">
+      <h3 style="margin-top:0;color:${urgentes.length?'#c0392b':'#ba7517'};">Mediación activa</h3>
+      <p style="margin:0;font-size:13px;">${enMediacion.length} caso(s) abiertos${urgentes.length ? `, <b>${urgentes.length} vencen en 2 días o menos</b>` : ''}.</p>
+    </div>` : ''}
     <div class="card">
       ${ESTADOS_GESTION.map(e=>`
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;">
@@ -191,18 +241,33 @@ let lectorQR = null;
 function ligarRecibir(){
   const div = document.getElementById('lector');
   lectorQR = new Html5Qrcode('lector');
-  Html5Qrcode.getCameras().then(cams=>{
-    if(cams && cams.length){
-      lectorQR.start(cams[0].id, {fps:10, qrbox:220}, (texto)=>{
+
+  // Intenta primero pedir directamente la camara trasera (environment).
+  lectorQR.start({ facingMode: 'environment' }, {fps:10, qrbox:220}, (texto)=>{
+    lectorQR.stop();
+    div.innerHTML = '';
+    procesarEAN(texto);
+  }).catch(()=>{
+    // Si el navegador no soporta el constraint de facingMode, cae aca:
+    // busca entre las camaras disponibles una que se llame "back"/"trasera",
+    // y si no encuentra ninguna, usa la ultima de la lista (normalmente la trasera
+    // en celulares con 2 camaras: la 0 es frontal, la 1+ son traseras).
+    Html5Qrcode.getCameras().then(cams=>{
+      if(!cams || !cams.length){
+        div.innerHTML = '<p style="font-size:12px;color:#878785;">Sin camara detectada, usa el campo manual.</p>';
+        return;
+      }
+      const trasera = cams.find(c => /back|trasera|rear|environment/i.test(c.label)) || cams[cams.length-1];
+      lectorQR.start(trasera.id, {fps:10, qrbox:220}, (texto)=>{
         lectorQR.stop();
         div.innerHTML = '';
         procesarEAN(texto);
-      }).catch(()=>{ div.innerHTML = '<p style="font-size:12px;color:#878785;">Camara no disponible, usa el campo manual.</p>'; });
-    } else {
+      }).catch(()=>{
+        div.innerHTML = '<p style="font-size:12px;color:#878785;">Camara no disponible, usa el campo manual.</p>';
+      });
+    }).catch(()=>{
       div.innerHTML = '<p style="font-size:12px;color:#878785;">Sin camara detectada, usa el campo manual.</p>';
-    }
-  }).catch(()=>{
-    div.innerHTML = '<p style="font-size:12px;color:#878785;">Sin camara detectada, usa el campo manual.</p>';
+    });
   });
 
   document.getElementById('btnBuscarEan').onclick = ()=>{
@@ -436,6 +501,148 @@ function abrirEdicion(item){
       msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
     }
   };
+}
+
+/* ================== MEDIACION ================== */
+function vistaMediacion(){
+  const sinMatch = dataCache.mediacionesSinMatch || [];
+  return `
+    ${sinMatch.length ? `
+    <div class="card" style="border:2px solid #ba7517;">
+      <h3 style="margin-top:0;color:#ba7517;">Detectadas por ProfitGuard, sin registro en la planilla</h3>
+      <p style="font-size:12px;color:#878785;">Estas órdenes están "in_mediation" en ProfitGuard pero no aparecen con ese número en tu planilla — puede ser una devolución que aún no se registró.</p>
+      ${sinMatch.map(m=>`<div class="fila-orden"><div class="info"><b>${m.numeroDeOrden}</b><span>${m.fecha}</span></div></div>`).join('')}
+    </div>` : ''}
+    <div class="card">
+      <h3 style="margin-top:0;">Buscar orden (registro manual)</h3>
+      <input id="buscarMediacion" placeholder="Número de orden o SKU">
+      <div id="resultadoBusquedaMediacion"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0;">Casos activos</h3>
+      <div id="listadoMediacion"></div>
+    </div>
+  `;
+}
+
+function ligarMediacion(){
+  document.getElementById('buscarMediacion').oninput = (e)=>{
+    const texto = e.target.value.trim().toLowerCase();
+    const cont = document.getElementById('resultadoBusquedaMediacion');
+    if(!texto){ cont.innerHTML=''; return; }
+    const encontrados = dataCache.devoluciones.filter(d =>
+      String(d['Numero de orden']).toLowerCase().includes(texto) ||
+      String(d.SKU).toLowerCase().includes(texto)
+    ).slice(0,15);
+    if(encontrados.length===0){ cont.innerHTML = '<p style="font-size:12px;color:#878785;">Sin resultados.</p>'; return; }
+    cont.innerHTML = encontrados.map(d=>`
+      <div class="fila-orden" data-row="${d._row}">
+        <div class="info">
+          <b>${d.SKU} · ${d['Numero de orden']}</b>
+          <span>${d.MarketPlace} · ${d.Fecha}${d['En mediacion']==='Si' ? ' · ya en mediación' : ''}</span>
+        </div>
+      </div>`).join('');
+    cont.querySelectorAll('.fila-orden').forEach(f=>{
+      f.onclick = ()=>{
+        const row = Number(f.dataset.row);
+        const item = dataCache.devoluciones.find(d=>d._row===row);
+        formularioMediacion(item);
+      };
+    });
+  };
+  pintarListadoMediacion();
+}
+
+function formularioMediacion(item){
+  const cont = document.getElementById('resultadoBusquedaMediacion');
+  const hoy = new Date().toISOString().slice(0,10);
+  cont.innerHTML = `
+    <div class="card" style="border:2px solid #E94D1A;">
+      <h4 style="margin-top:0;">${item.SKU} · ${item['Numero de orden']}</h4>
+      <label>Fecha inicio mediación</label>
+      <input id="mFechaInicio" type="date" value="${item['Fecha inicio mediacion'] || hoy}">
+      <label>Plazo de respuesta</label>
+      <input id="mPlazo" type="date" value="${item['Plazo respuesta mediacion'] || ''}">
+      <label>Responsable de la siguiente acción</label>
+      <select id="mResponsable">
+        <option value="Nosotros" ${item['Responsable siguiente accion']==='Nosotros'?'selected':''}>Nosotros</option>
+        <option value="Comprador" ${item['Responsable siguiente accion']==='Comprador'?'selected':''}>Comprador</option>
+        <option value="Marketplace" ${item['Responsable siguiente accion']==='Marketplace'?'selected':''}>Marketplace</option>
+      </select>
+      <label>Resultado</label>
+      <select id="mResultado">
+        <option value="Pendiente" ${(!item['Resultado mediacion']||item['Resultado mediacion']==='Pendiente')?'selected':''}>Pendiente</option>
+        <option value="Favor nuestro" ${item['Resultado mediacion']==='Favor nuestro'?'selected':''}>Favor nuestro</option>
+        <option value="Favor comprador" ${item['Resultado mediacion']==='Favor comprador'?'selected':''}>Favor comprador</option>
+      </select>
+      <button class="btn" id="btnGuardarMediacion">Guardar</button>
+      <div id="msgMediacion"></div>
+    </div>
+  `;
+  document.getElementById('btnGuardarMediacion').onclick = async ()=>{
+    const datos = {
+      _row: item._row,
+      'En mediacion': 'Si',
+      'Fecha inicio mediacion': document.getElementById('mFechaInicio').value,
+      'Plazo respuesta mediacion': document.getElementById('mPlazo').value,
+      'Responsable siguiente accion': document.getElementById('mResponsable').value,
+      'Resultado mediacion': document.getElementById('mResultado').value
+    };
+    const msg = document.getElementById('msgMediacion');
+    msg.innerHTML = '<div class="msg">Guardando...</div>';
+    const res = await llamarBackend({action:'actualizar', data: datos});
+    if(res.ok){
+      msg.innerHTML = '<div class="msg ok">Guardado.</div>';
+      await cargarDatos();
+      setTimeout(()=>{ pantalla='mediacion'; render(); }, 800);
+    } else {
+      msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
+    }
+  };
+}
+
+function pintarListadoMediacion(){
+  const cont = document.getElementById('listadoMediacion');
+  const hoy = new Date();
+  const activos = dataCache.devoluciones
+    .filter(d => d['En mediacion']==='Si' && (!d['Resultado mediacion'] || d['Resultado mediacion']==='Pendiente'))
+    .map(d=>{
+      const dias = d['Plazo respuesta mediacion'] ? Math.ceil((new Date(d['Plazo respuesta mediacion']) - hoy)/86400000) : null;
+      return Object.assign({}, d, {_dias: dias});
+    })
+    .sort((a,b)=>{
+      if(a._dias===null) return 1;
+      if(b._dias===null) return -1;
+      return a._dias - b._dias;
+    });
+
+  if(activos.length===0){ cont.innerHTML = '<p style="font-size:13px;color:#878785;">No hay casos en mediación activa.</p>'; return; }
+
+  cont.innerHTML = activos.map(d=>{
+    let colorPill = 'ok';
+    let textoPlazo = 'sin plazo';
+    if(d._dias !== null){
+      textoPlazo = d._dias < 0 ? `vencido hace ${Math.abs(d._dias)}d` : `${d._dias}d restantes`;
+      colorPill = d._dias <= 1 ? 'pend' : (d._dias <= 3 ? 'pend' : 'ok');
+    }
+    return `
+      <div class="fila-orden" data-row="${d._row}">
+        <div class="info">
+          <b>${d.SKU} · ${d['Numero de orden']}</b>
+          <span>${d.MarketPlace} · responsable: ${d['Responsable siguiente accion']||'sin definir'}</span>
+        </div>
+        <span class="pill ${colorPill}">${textoPlazo}</span>
+      </div>`;
+  }).join('');
+
+  cont.querySelectorAll('.fila-orden').forEach(f=>{
+    f.onclick = ()=>{
+      const row = Number(f.dataset.row);
+      const item = dataCache.devoluciones.find(d=>d._row===row);
+      document.getElementById('buscarMediacion').value = item['Numero de orden'];
+      formularioMediacion(item);
+    };
+  });
 }
 
 /* ================== INICIO ================== */
