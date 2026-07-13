@@ -15,11 +15,39 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--fondo);color:var(--texto);}
-  header{background:var(--naranja);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10;}
+
+  /* ---- Estructura general: sidebar (desktop) + contenido ---- */
+  .app-shell{display:flex;min-height:100vh;}
+  .sidebar{
+    width:230px;background:#fff;border-right:1px solid var(--borde);
+    position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:20;
+  }
+  .sidebar .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px;border-bottom:1px solid var(--borde);}
+  .sidebar .brand img{width:30px;height:30px;border-radius:8px;}
+  .sidebar .brand span{font-weight:700;font-size:14px;line-height:1.2;}
+  .sidebar nav{flex:1;padding:14px 10px;display:flex;flex-direction:column;gap:3px;}
+  .sidebar nav button{
+    display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;border:none;
+    background:none;text-align:left;font-size:14px;font-weight:600;color:var(--gris);cursor:pointer;width:100%;
+  }
+  .sidebar nav button svg{width:19px;height:19px;flex-shrink:0;}
+  .sidebar nav button:hover{background:#f4f4f2;}
+  .sidebar nav button.activo{background:linear-gradient(90deg,#fdece3,#fff5f0);color:var(--naranja);}
+  .sidebar .pie-sidebar{padding:14px 18px;border-top:1px solid var(--borde);font-size:12px;color:var(--gris);}
+  .sidebar .pie-sidebar a{color:var(--gris);text-decoration:none;}
+  .sidebar .pie-sidebar b{color:var(--texto);display:block;font-size:13px;margin-bottom:2px;}
+
+  .main-wrap{flex:1;margin-left:230px;min-width:0;}
+  header{
+    background:var(--naranja);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;
+    align-items:center;position:sticky;top:0;z-index:10;
+  }
   header h1{font-size:16px;margin:0;font-weight:600;}
-  header .user{font-size:12px;opacity:.9;}
-  main{padding:14px;max-width:520px;margin:0 auto;padding-bottom:80px;}
-  .card{background:var(--card);border:1px solid var(--borde);border-radius:10px;padding:14px;margin-bottom:12px;}
+  header .user{font-size:12px;opacity:.95;}
+  header .user a{color:#fff;}
+  main{padding:22px;max-width:1400px;margin:0 auto;padding-bottom:90px;}
+
+  .card{background:var(--card);border:1px solid var(--borde);border-radius:12px;padding:16px;margin-bottom:14px;}
   .btn{display:block;width:100%;padding:14px;border:none;border-radius:8px;background:var(--naranja);color:#fff;font-size:15px;font-weight:600;margin-bottom:10px;cursor:pointer;}
   .btn.secundario{background:#fff;color:var(--naranja);border:2px solid var(--naranja);}
   .btn.gris{background:var(--gris);}
@@ -36,28 +64,47 @@
   .tabs{display:flex;gap:8px;margin-bottom:14px;}
   .tabs button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--borde);background:#fff;font-weight:600;font-size:13px;cursor:pointer;}
   .tabs button.activo{background:var(--naranja);color:#fff;border-color:var(--naranja);}
-  #lector{width:100%;border-radius:8px;overflow:hidden;margin-bottom:10px;}
+  #lector{width:100%;border-radius:8px;overflow:hidden;margin-bottom:10px;max-width:420px;}
   .oculto{display:none !important;}
   .msg{padding:10px;border-radius:8px;font-size:13px;margin-bottom:10px;}
   .msg.err{background:#fcebeb;color:var(--err);}
   .msg.ok{background:#eaf3de;color:var(--ok);}
   .top-bar{display:flex;gap:8px;margin-bottom:10px;}
   .top-bar select, .top-bar input{margin-bottom:0;}
-  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--borde);display:flex;}
-  nav.bottom button{flex:1;padding:12px;background:none;border:none;font-size:12px;font-weight:600;color:var(--gris);cursor:pointer;}
+
+  /* ---- Barra inferior: solo se ve en celular ---- */
+  nav.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--borde);display:flex;z-index:20;}
+  nav.bottom button{flex:1;padding:10px 4px;background:none;border:none;font-size:11px;font-weight:600;color:var(--gris);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;}
+  nav.bottom button svg{width:20px;height:20px;}
   nav.bottom button.activo{color:var(--naranja);}
-  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}
-  .kpi{background:var(--card);border:1px solid var(--borde);border-radius:10px;padding:10px;text-align:center;}
-  .kpi .num{font-size:22px;font-weight:700;color:#E94D1A;display:block;}
-  .kpi .lbl{font-size:11px;color:var(--gris);}
-  .filtros-reporte{display:flex;flex-wrap:wrap;gap:8px;}
-  .filtros-reporte > div{flex:1;min-width:120px;}
+
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px;}
+  .kpi{background:var(--card);border:1px solid var(--borde);border-radius:12px;padding:16px;text-align:center;}
+  .kpi .num{font-size:28px;font-weight:700;color:#E94D1A;display:block;}
+  .kpi .lbl{font-size:12px;color:var(--gris);}
+  .filtros-reporte{display:flex;flex-wrap:wrap;gap:10px;}
+  .filtros-reporte > div{flex:1;min-width:150px;}
   .filtros-reporte label{margin-bottom:2px;}
   .filtros-reporte input, .filtros-reporte select{margin-bottom:0;}
-  table.tabla-reporte{width:100%;border-collapse:collapse;font-size:12px;}
-  table.tabla-reporte th{text-align:left;padding:6px 4px;border-bottom:2px solid var(--borde);color:var(--gris);position:sticky;top:0;background:#fff;}
-  table.tabla-reporte td{padding:6px 4px;border-bottom:1px solid #eee;white-space:nowrap;}
-  .tabla-scroll{overflow-x:auto;max-height:400px;overflow-y:auto;}
+  table.tabla-reporte{width:100%;border-collapse:collapse;font-size:13px;}
+  table.tabla-reporte th{text-align:left;padding:8px 6px;border-bottom:2px solid var(--borde);color:var(--gris);position:sticky;top:0;background:#fff;}
+  table.tabla-reporte td{padding:8px 6px;border-bottom:1px solid #eee;white-space:nowrap;}
+  .tabla-scroll{overflow-x:auto;max-height:420px;overflow-y:auto;}
+  .grid-charts{display:grid;grid-template-columns:1fr;gap:14px;}
+  .grid-2{display:grid;grid-template-columns:1fr;gap:14px;}
+
+  /* ---- Desktop: se activa el sidebar, se oculta la barra inferior, y las grillas se expanden ---- */
+  @media (min-width:860px){
+    nav.bottom{display:none;}
+    .kpis{grid-template-columns:repeat(4,1fr);}
+    .grid-charts{grid-template-columns:1.3fr 1fr;}
+    .grid-2{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width:859px){
+    .sidebar{display:none;}
+    .main-wrap{margin-left:0;}
+    main{padding:14px;max-width:520px;}
+  }
 </style>
 </head>
 <body>
@@ -142,28 +189,76 @@ const ESTADOS_GESTION = [
 ];
 
 /* ================== RENDER PRINCIPAL ================== */
+const ICONOS_NAV = {
+  home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-7h6v7"/></svg>`,
+  recibir: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M3 12h18"/></svg>`,
+  gestionar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>`,
+  reportes: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M12 20V4M20 20v-7"/><path d="M2 20h20"/></svg>`,
+  usuarios: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><circle cx="17.5" cy="8.3" r="2.4"/><path d="M17 14.8c2.7.3 4.5 2 4.5 4.9"/></svg>`
+};
+
+function itemsNav(){
+  const items = [
+    { id:'home', label:'Inicio' },
+    { id:'recibir', label:'Recibir' },
+    { id:'gestionar', label:'Pendientes' },
+    { id:'reportes', label:'Reportes' }
+  ];
+  if(sesion && sesion.rol==='admin') items.push({ id:'usuarios', label:'Usuarios' });
+  return items;
+}
+
 function render(){
   const app = document.getElementById('app');
   if (pantalla === 'login') { app.innerHTML = vistaLogin(); ligarLogin(); return; }
 
+  const items = itemsNav();
+
   app.innerHTML = `
-    <header>
-      <h1 style="display:flex;align-items:center;gap:8px;"><img src="icon-32.png" alt="" style="width:22px;height:22px;border-radius:6px;">Devoluciones ET Brands</h1>
-      <div class="user">${sesion.nombre} · <a href="#" id="btnCambiarClave" style="color:#fff;">clave</a> · <a href="#" id="logout" style="color:#fff;">salir</a></div>
-    </header>
-    <main id="main"></main>
-    <nav class="bottom">
-      <button data-p="home" class="${pantalla==='home'?'activo':''}">Inicio</button>
-      <button data-p="recibir" class="${pantalla==='recibir'?'activo':''}">Recibir</button>
-      <button data-p="gestionar" class="${pantalla==='gestionar'?'activo':''}">Pendientes</button>
-      <button data-p="reportes" class="${pantalla==='reportes'?'activo':''}">Reportes</button>
-      ${sesion.rol==='admin' ? `<button data-p="usuarios" class="${pantalla==='usuarios'?'activo':''}">Usuarios</button>` : ''}
-    </nav>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="icon-32.png" alt="">
+          <span>Devoluciones<br>ET Brands</span>
+        </div>
+        <nav>
+          ${items.map(it=>`
+            <button data-p="${it.id}" class="${pantalla===it.id?'activo':''}">
+              ${ICONOS_NAV[it.id]}<span>${it.label}</span>
+            </button>`).join('')}
+        </nav>
+        <div class="pie-sidebar">
+          <b>${sesion.nombre}</b>
+          <a href="#" id="btnCambiarClaveSide">Cambiar clave</a> · <a href="#" id="logoutSide">Salir</a>
+        </div>
+      </aside>
+
+      <div class="main-wrap">
+        <header>
+          <h1>Devoluciones ET Brands</h1>
+          <div class="user">${sesion.nombre} · <a href="#" id="btnCambiarClave">clave</a> · <a href="#" id="logout">salir</a></div>
+        </header>
+        <main id="main"></main>
+        <nav class="bottom">
+          ${items.map(it=>`
+            <button data-p="${it.id}" class="${pantalla===it.id?'activo':''}">
+              ${ICONOS_NAV[it.id]}<span>${it.label}</span>
+            </button>`).join('')}
+        </nav>
+      </div>
+    </div>
   `;
-  document.getElementById('logout').onclick = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
-  document.getElementById('btnCambiarClave').onclick = (e)=>{ e.preventDefault(); pantalla='cambiarClave'; render(); };
-  document.querySelectorAll('nav.bottom button').forEach(b=>{
-    b.onclick = ()=>{ pantalla=b.dataset.p; contextoRecepcion={ean:'',sku:'',ordenSeleccionada:null}; render(); };
+
+  const irA = (id)=>{ pantalla=id; contextoRecepcion={ean:'',sku:'',ordenSeleccionada:null}; render(); };
+  const cerrarSesion = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
+  const irAClave = (e)=>{ e.preventDefault(); pantalla='cambiarClave'; render(); };
+
+  document.getElementById('logout').onclick = cerrarSesion;
+  document.getElementById('logoutSide').onclick = cerrarSesion;
+  document.getElementById('btnCambiarClave').onclick = irAClave;
+  document.getElementById('btnCambiarClaveSide').onclick = irAClave;
+  document.querySelectorAll('.sidebar nav button, nav.bottom button').forEach(b=>{
+    b.onclick = ()=> irA(b.dataset.p);
   });
 
   const main = document.getElementById('main');
@@ -657,15 +752,17 @@ function vistaReportes(){
 
     <div class="card">
       <h4 style="margin-top:0;">Volumen procesado en el tiempo</h4>
-      <canvas id="chartTendencia" height="160"></canvas>
+      <canvas id="chartTendencia" height="90"></canvas>
     </div>
-    <div class="card">
-      <h4 style="margin-top:0;">Clasificación</h4>
-      <canvas id="chartClasificacion" height="160"></canvas>
-    </div>
-    <div class="card">
-      <h4 style="margin-top:0;">Por marketplace</h4>
-      <canvas id="chartMarketplace" height="160"></canvas>
+    <div class="grid-2">
+      <div class="card">
+        <h4 style="margin-top:0;">Clasificación</h4>
+        <canvas id="chartClasificacion" height="200"></canvas>
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0;">Por marketplace</h4>
+        <canvas id="chartMarketplace" height="200"></canvas>
+      </div>
     </div>
 
     <div class="card">
