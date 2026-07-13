@@ -138,7 +138,6 @@ function render(){
       <button data-p="home" class="${pantalla==='home'?'activo':''}">Inicio</button>
       <button data-p="recibir" class="${pantalla==='recibir'?'activo':''}">Recibir</button>
       <button data-p="gestionar" class="${pantalla==='gestionar'?'activo':''}">Pendientes</button>
-      <button data-p="mediacion" class="${pantalla==='mediacion'?'activo':''}">Mediación</button>
     </nav>
   `;
   document.getElementById('logout').onclick = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
@@ -150,7 +149,6 @@ function render(){
   if (pantalla==='home') main.innerHTML = vistaHome();
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
-  if (pantalla==='mediacion') { main.innerHTML = vistaMediacion(); ligarMediacion(); }
 }
 
 /* ================== LOGIN ================== */
@@ -204,9 +202,16 @@ function vistaHome(){
   // Sin fila en ningun lado = pendiente de recepcion real.
   const ordenesEnMediacion = new Set((dataCache.mediacionesProfitGuard || []).map(m => m.numeroDeOrden.trim()).filter(Boolean));
   let pendienteRecepcion = 0, recibido = 0;
+  const detallePendientes = [];
   ordenesEnMediacion.forEach(numOrden=>{
     const existe = devs.some(d => String(d['Numero de orden']).trim() === numOrden);
-    if(existe) recibido++; else pendienteRecepcion++;
+    if(existe){
+      recibido++;
+    } else {
+      pendienteRecepcion++;
+      const linea = (dataCache.mediacionesProfitGuard || []).find(m => m.numeroDeOrden.trim() === numOrden);
+      if(linea) detallePendientes.push(linea);
+    }
   });
   const evaluado = recibido; // mismo criterio que "Recibido": ya tiene fila registrada.
   const totalMediacion = ordenesEnMediacion.size;
@@ -216,6 +221,13 @@ function vistaHome(){
       <h3 style="margin-top:0;">Mediación: qué falta procesar</h3>
       <p style="font-size:28px;margin:0;font-weight:700;color:${pendienteRecepcion ? '#c0392b' : '#1d9e75'};">${pendienteRecepcion}</p>
       <p style="margin:0;color:#878785;font-size:13px;">de ${totalMediacion} órdenes en mediación, sin ninguna fila registrada todavía</p>
+      ${detallePendientes.length ? `
+      <div style="margin-top:10px;border-top:1px solid #eee;padding-top:8px;">
+        ${detallePendientes.map(m=>`
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;">
+            <span>${m.numeroDeOrden} · SKU ${m.sku||'?'}</span><span style="color:#878785;">${m.motivo === 'cancelada_con_retorno' ? 'cancelada' : 'mediación'} · ${m.marketplace||''}</span>
+          </div>`).join('')}
+      </div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #eee;font-size:13px;margin-top:10px;">
         <span>Pendiente recepción</span><b>${pendienteRecepcion}</b>
       </div>
@@ -330,7 +342,7 @@ function mostrarOrdenesPendientes(sku, nombreProducto){
 
   if(mediacionesSku.length === 0){
     html += `
-      <p style="font-size:13px;color:#878785;">ProfitGuard no tiene ninguna orden en mediación para este SKU en este momento.</p>
+      <p style="font-size:13px;color:#878785;">ProfitGuard no tiene ninguna orden en mediación ni cancelada-con-retorno para este SKU en este momento.</p>
       <button class="btn secundario" id="btnCrearNueva">Registrar devolución no declarada</button>
     `;
     cont.innerHTML = html;
@@ -338,17 +350,18 @@ function mostrarOrdenesPendientes(sku, nombreProducto){
     return;
   }
 
-  html += `<p style="font-size:13px;color:#878785;">Órdenes en mediación (ProfitGuard) para este SKU — elige la que corresponde:</p>`;
+  html += `<p style="font-size:13px;color:#878785;">Elige la orden que corresponde:</p>`;
   mediacionesSku.forEach((m, idx)=>{
     const filaExistente = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === m.numeroDeOrden.trim());
     const yaProcesada = filaExistente && filaExistente['Estado de gestion'] && filaExistente['Estado de gestion'] !== 'Pendiente recepcion';
+    const etiqueta = m.motivo === 'cancelada_con_retorno' ? 'cancelada (con retorno)' : 'en mediación';
     html += `
       <div class="fila-orden" data-mediacion-idx="${idx}" style="${yaProcesada ? 'opacity:0.55;' : 'border-color:#c0392b;'}">
         <div class="info">
           <b>${m.numeroDeOrden}</b>
           <span>${m.marketplace || 'marketplace no identificado'} · ${m.fecha} · Cant: ${m.cantidad || '?'}</span>
         </div>
-        <span class="pill" style="background:${yaProcesada?'#eaf3de':'#fcebeb'};color:${yaProcesada?'#1d9e75':'#c0392b'};">${yaProcesada ? 'ya procesada' : 'en mediación'}</span>
+        <span class="pill" style="background:${yaProcesada?'#eaf3de':'#fcebeb'};color:${yaProcesada?'#1d9e75':'#c0392b'};">${yaProcesada ? 'ya procesada' : etiqueta}</span>
       </div>`;
   });
 
@@ -360,13 +373,14 @@ function mostrarOrdenesPendientes(sku, nombreProducto){
       if(filaExistente){
         formularioRecepcion(filaExistente, sku);
       } else {
-        // No hay fila todavia: se va a crear una nueva, ya marcada "En mediacion".
+        // No hay fila todavia: se va a crear una nueva, con el motivo que corresponda.
         const ordenSintetica = {
           'Numero de orden': m.numeroDeOrden,
           MarketPlace: m.marketplace || 'No identificado',
           Fecha: m.fecha,
           Cantidad: m.cantidad,
-          'En mediacion': 'Si'
+          'En mediacion': m.motivo === 'en_mediacion' ? 'Si' : 'No',
+          _motivo: m.motivo
         };
         formularioRecepcion(ordenSintetica, sku);
       }
@@ -378,10 +392,12 @@ function formularioRecepcion(orden, sku){
   const cont = document.getElementById('resultadoRecibir');
   const hoy = new Date().toISOString().slice(0,10);
   const enMediacion = orden && orden['En mediacion']==='Si';
+  const esCanceladaConRetorno = orden && orden._motivo === 'cancelada_con_retorno';
   cont.innerHTML = `
-    <div class="card" style="border:2px solid ${enMediacion?'#c0392b':'#E94D1A'};">
+    <div class="card" style="border:2px solid ${(enMediacion||esCanceladaConRetorno)?'#c0392b':'#E94D1A'};">
       <h4 style="margin-top:0;">${orden ? 'Orden '+orden['Numero de orden'] : 'Devolución no declarada'} · SKU ${sku}</h4>
-      ${enMediacion ? `<div class="msg err">⚠ Esta orden está en mediación con el comprador. Procesar la recepción no cierra el caso — revisa la pestaña "Mediación" para el resultado y plazo.</div>` : ''}
+      ${enMediacion ? `<div class="msg err">⚠ Esta orden está en mediación con el comprador (SAC la sigue por su cuenta). Aquí solo registramos la recepción física.</div>` : ''}
+      ${esCanceladaConRetorno ? `<div class="msg err">⚠ Esta orden fue cancelada después de haber salido de bodega — corresponde recibirla igual que una devolución normal.</div>` : ''}
       <label>Cantidad recibida</label>
       <input id="fCantidad" type="number" min="1" value="${orden ? (orden.Cantidad||1) : 1}">
       <label>Especificación</label>
@@ -540,167 +556,6 @@ function abrirEdicion(item){
       msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
     }
   };
-}
-
-/* ================== MEDIACION ================== */
-function vistaMediacion(){
-  const sinMatch = dataCache.mediacionesSinMatch || [];
-  const activas = dataCache.devoluciones.filter(d => d['En mediacion']==='Si' && (!d['Resultado mediacion'] || d['Resultado mediacion']==='Pendiente'));
-  const pendientesProcesar = activas.filter(d => !d['Estado de gestion'] || d['Estado de gestion']==='Pendiente recepcion');
-  const yaProcesadas = activas.length - pendientesProcesar.length;
-  const totalPendienteReal = pendientesProcesar.length + sinMatch.length;
-
-  return `
-    <div class="card" style="border:2px solid ${totalPendienteReal ? '#c0392b' : '#1d9e75'};">
-      <h3 style="margin-top:0;">Resumen de mediación</h3>
-      <p style="font-size:28px;margin:0;font-weight:700;color:${totalPendienteReal ? '#c0392b' : '#1d9e75'};">${totalPendienteReal}</p>
-      <p style="margin:0 0 10px;color:#878785;font-size:13px;">caso(s) en mediación aún sin procesar en bodega</p>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #eee;font-size:13px;">
-        <span>En planilla, pendientes de recepción</span><b>${pendientesProcesar.length}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #eee;font-size:13px;">
-        <span>Detectadas por ProfitGuard, sin registrar aún</span><b>${sinMatch.length}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #eee;font-size:13px;">
-        <span>Ya procesadas en bodega (caso sigue abierto)</span><b>${yaProcesadas}</b>
-      </div>
-    </div>
-    ${sinMatch.length ? `
-    <div class="card" style="border:2px solid #ba7517;">
-      <h3 style="margin-top:0;color:#ba7517;">Detectadas por ProfitGuard, sin registro en la planilla</h3>
-      <p style="font-size:12px;color:#878785;">Estas órdenes están "in_mediation" en ProfitGuard pero no aparecen con ese número en tu planilla — puede ser una devolución que aún no se registró.</p>
-      ${sinMatch.map(m=>`<div class="fila-orden"><div class="info"><b>${m.numeroDeOrden}</b><span>${m.fecha}</span></div></div>`).join('')}
-    </div>` : ''}
-    <div class="card">
-      <h3 style="margin-top:0;">Buscar orden (registro manual)</h3>
-      <input id="buscarMediacion" placeholder="Número de orden o SKU">
-      <div id="resultadoBusquedaMediacion"></div>
-    </div>
-    <div class="card">
-      <h3 style="margin-top:0;">Casos activos</h3>
-      <div id="listadoMediacion"></div>
-    </div>
-  `;
-}
-
-function ligarMediacion(){
-  document.getElementById('buscarMediacion').oninput = (e)=>{
-    const texto = e.target.value.trim().toLowerCase();
-    const cont = document.getElementById('resultadoBusquedaMediacion');
-    if(!texto){ cont.innerHTML=''; return; }
-    const encontrados = dataCache.devoluciones.filter(d =>
-      String(d['Numero de orden']).toLowerCase().includes(texto) ||
-      String(d.SKU).toLowerCase().includes(texto)
-    ).slice(0,15);
-    if(encontrados.length===0){ cont.innerHTML = '<p style="font-size:12px;color:#878785;">Sin resultados.</p>'; return; }
-    cont.innerHTML = encontrados.map(d=>`
-      <div class="fila-orden" data-row="${d._row}">
-        <div class="info">
-          <b>${d.SKU} · ${d['Numero de orden']}</b>
-          <span>${d.MarketPlace} · ${d.Fecha}${d['En mediacion']==='Si' ? ' · ya en mediación' : ''}</span>
-        </div>
-      </div>`).join('');
-    cont.querySelectorAll('.fila-orden').forEach(f=>{
-      f.onclick = ()=>{
-        const row = Number(f.dataset.row);
-        const item = dataCache.devoluciones.find(d=>d._row===row);
-        formularioMediacion(item);
-      };
-    });
-  };
-  pintarListadoMediacion();
-}
-
-function formularioMediacion(item){
-  const cont = document.getElementById('resultadoBusquedaMediacion');
-  const hoy = new Date().toISOString().slice(0,10);
-  cont.innerHTML = `
-    <div class="card" style="border:2px solid #E94D1A;">
-      <h4 style="margin-top:0;">${item.SKU} · ${item['Numero de orden']}</h4>
-      <label>Fecha inicio mediación</label>
-      <input id="mFechaInicio" type="date" value="${item['Fecha inicio mediacion'] || hoy}">
-      <label>Plazo de respuesta</label>
-      <input id="mPlazo" type="date" value="${item['Plazo respuesta mediacion'] || ''}">
-      <label>Responsable de la siguiente acción</label>
-      <select id="mResponsable">
-        <option value="Nosotros" ${item['Responsable siguiente accion']==='Nosotros'?'selected':''}>Nosotros</option>
-        <option value="Comprador" ${item['Responsable siguiente accion']==='Comprador'?'selected':''}>Comprador</option>
-        <option value="Marketplace" ${item['Responsable siguiente accion']==='Marketplace'?'selected':''}>Marketplace</option>
-      </select>
-      <label>Resultado</label>
-      <select id="mResultado">
-        <option value="Pendiente" ${(!item['Resultado mediacion']||item['Resultado mediacion']==='Pendiente')?'selected':''}>Pendiente</option>
-        <option value="Favor nuestro" ${item['Resultado mediacion']==='Favor nuestro'?'selected':''}>Favor nuestro</option>
-        <option value="Favor comprador" ${item['Resultado mediacion']==='Favor comprador'?'selected':''}>Favor comprador</option>
-      </select>
-      <button class="btn" id="btnGuardarMediacion">Guardar</button>
-      <div id="msgMediacion"></div>
-    </div>
-  `;
-  document.getElementById('btnGuardarMediacion').onclick = async ()=>{
-    const datos = {
-      _row: item._row,
-      'En mediacion': 'Si',
-      'Fecha inicio mediacion': document.getElementById('mFechaInicio').value,
-      'Plazo respuesta mediacion': document.getElementById('mPlazo').value,
-      'Responsable siguiente accion': document.getElementById('mResponsable').value,
-      'Resultado mediacion': document.getElementById('mResultado').value
-    };
-    const msg = document.getElementById('msgMediacion');
-    msg.innerHTML = '<div class="msg">Guardando...</div>';
-    const res = await llamarBackend({action:'actualizar', data: datos});
-    if(res.ok){
-      msg.innerHTML = '<div class="msg ok">Guardado.</div>';
-      await cargarDatos();
-      setTimeout(()=>{ pantalla='mediacion'; render(); }, 800);
-    } else {
-      msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
-    }
-  };
-}
-
-function pintarListadoMediacion(){
-  const cont = document.getElementById('listadoMediacion');
-  const hoy = new Date();
-  const activos = dataCache.devoluciones
-    .filter(d => d['En mediacion']==='Si' && (!d['Resultado mediacion'] || d['Resultado mediacion']==='Pendiente'))
-    .map(d=>{
-      const dias = d['Plazo respuesta mediacion'] ? Math.ceil((new Date(d['Plazo respuesta mediacion']) - hoy)/86400000) : null;
-      return Object.assign({}, d, {_dias: dias});
-    })
-    .sort((a,b)=>{
-      if(a._dias===null) return 1;
-      if(b._dias===null) return -1;
-      return a._dias - b._dias;
-    });
-
-  if(activos.length===0){ cont.innerHTML = '<p style="font-size:13px;color:#878785;">No hay casos en mediación activa.</p>'; return; }
-
-  cont.innerHTML = activos.map(d=>{
-    let colorPill = 'ok';
-    let textoPlazo = 'sin plazo';
-    if(d._dias !== null){
-      textoPlazo = d._dias < 0 ? `vencido hace ${Math.abs(d._dias)}d` : `${d._dias}d restantes`;
-      colorPill = d._dias <= 1 ? 'pend' : (d._dias <= 3 ? 'pend' : 'ok');
-    }
-    return `
-      <div class="fila-orden" data-row="${d._row}">
-        <div class="info">
-          <b>${d.SKU} · ${d['Numero de orden']}</b>
-          <span>${d.MarketPlace} · responsable: ${d['Responsable siguiente accion']||'sin definir'}</span>
-        </div>
-        <span class="pill ${colorPill}">${textoPlazo}</span>
-      </div>`;
-  }).join('');
-
-  cont.querySelectorAll('.fila-orden').forEach(f=>{
-    f.onclick = ()=>{
-      const row = Number(f.dataset.row);
-      const item = dataCache.devoluciones.find(d=>d._row===row);
-      document.getElementById('buscarMediacion').value = item['Numero de orden'];
-      formularioMediacion(item);
-    };
-  });
 }
 
 /* ================== INICIO ================== */
