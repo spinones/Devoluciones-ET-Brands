@@ -81,23 +81,27 @@ async function cargarDatos(){
   sincronizarMediacionesConSheet(); // no se espera (fire and forget), no debe bloquear la pantalla
 }
 
-// Cruza lo que trae ProfitGuard (status=in_mediation) con la planilla local.
+// Cruza lo que trae ProfitGuard (status=in_mediation, una linea por SKU) con la planilla local.
 // Si una orden de ProfitGuard no existe en la planilla, no se pierde: se guarda
-// en dataCache.mediacionesSinMatch para que se pueda revisar/registrar a mano.
+// en dataCache.mediacionesSinMatch para que se pueda revisar/registrar a mano o desde "Recibir".
 function aplicarMediacionesProfitGuard(){
-  dataCache.mediacionesSinMatch = [];
   const mediaciones = dataCache.mediacionesProfitGuard || [];
+  const ordenesYaEnPlanilla = new Set();
+
   mediaciones.forEach(m=>{
     const fila = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === m.numeroDeOrden.trim());
     if(fila){
+      ordenesYaEnPlanilla.add(m.numeroDeOrden.trim());
       if(fila['En mediacion'] !== 'Si'){
         fila['En mediacion'] = 'Si';
         fila['_mediacionAutoDetectada'] = true;
       }
-    } else {
-      dataCache.mediacionesSinMatch.push(m);
     }
   });
+
+  // sinMatch: una entrada por orden+SKU que no existe todavia en la planilla,
+  // para poder ofrecerla directo en la pantalla de Recibir.
+  dataCache.mediacionesSinMatch = mediaciones.filter(m => !ordenesYaEnPlanilla.has(m.numeroDeOrden.trim()));
 }
 
 // Guarda en la planilla, en segundo plano, las mediaciones que la API detectó
@@ -300,16 +304,19 @@ function procesarEAN(ean){
 
 function mostrarOrdenesPendientes(sku, nombreProducto){
   const cont = document.getElementById('resultadoRecibir');
-  const pendientes = dataCache.devoluciones.filter(d =>
-    String(d.SKU).trim() === String(sku).trim() &&
-    (!d['Estado de gestion'] || d['Estado de gestion'] === 'Pendiente recepcion')
+  // Fuente unica de "que hay que procesar": las ordenes en mediacion en vivo de ProfitGuard.
+  // La planilla ya NO se usa para decidir que esta pendiente - eso era el historico de lo
+  // ya procesado. La planilla solo se consulta para ver si esta orden ya tiene una fila
+  // (para continuar/actualizarla) o si hay que crear una nueva.
+  const mediacionesSku = (dataCache.mediacionesProfitGuard || []).filter(m =>
+    String(m.sku).trim() === String(sku).trim()
   );
 
   let html = `<div class="msg ok">SKU identificado: <b>${sku}</b>${nombreProducto ? ' · '+nombreProducto : ''}</div>`;
 
-  if(pendientes.length === 0){
+  if(mediacionesSku.length === 0){
     html += `
-      <p style="font-size:13px;color:#878785;">No hay órdenes pendientes registradas para este SKU.</p>
+      <p style="font-size:13px;color:#878785;">ProfitGuard no tiene ninguna orden en mediación para este SKU en este momento.</p>
       <button class="btn secundario" id="btnCrearNueva">Registrar devolución no declarada</button>
     `;
     cont.innerHTML = html;
@@ -317,26 +324,38 @@ function mostrarOrdenesPendientes(sku, nombreProducto){
     return;
   }
 
-  html += `<p style="font-size:13px;color:#878785;">Elige la orden que corresponde:</p>`;
-  pendientes
-    .sort((a,b)=> new Date(b.Fecha) - new Date(a.Fecha))
-    .forEach(d=>{
-      const enMediacion = d['En mediacion']==='Si';
-      html += `
-        <div class="fila-orden" data-row="${d._row}" style="${enMediacion?'border-color:#c0392b;':''}">
-          <div class="info">
-            <b>${d['Numero de orden']}</b>
-            <span>${d.MarketPlace} · ${d.Fecha} · Cant: ${d.Cantidad || '?'}</span>
-          </div>
-          ${enMediacion ? '<span class="pill" style="background:#fcebeb;color:#c0392b;">en mediación</span>' : '<span class="pill pend">pendiente</span>'}
-        </div>`;
-    });
+  html += `<p style="font-size:13px;color:#878785;">Órdenes en mediación (ProfitGuard) para este SKU — elige la que corresponde:</p>`;
+  mediacionesSku.forEach((m, idx)=>{
+    const filaExistente = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === m.numeroDeOrden.trim());
+    const yaProcesada = filaExistente && filaExistente['Estado de gestion'] && filaExistente['Estado de gestion'] !== 'Pendiente recepcion';
+    html += `
+      <div class="fila-orden" data-mediacion-idx="${idx}" style="${yaProcesada ? 'opacity:0.55;' : 'border-color:#c0392b;'}">
+        <div class="info">
+          <b>${m.numeroDeOrden}</b>
+          <span>${m.marketplace || 'marketplace no identificado'} · ${m.fecha} · Cant: ${m.cantidad || '?'}</span>
+        </div>
+        <span class="pill" style="background:${yaProcesada?'#eaf3de':'#fcebeb'};color:${yaProcesada?'#1d9e75':'#c0392b'};">${yaProcesada ? 'ya procesada' : 'en mediación'}</span>
+      </div>`;
+  });
+
   cont.innerHTML = html;
-  cont.querySelectorAll('.fila-orden').forEach(f=>{
+  cont.querySelectorAll('.fila-orden[data-mediacion-idx]').forEach(f=>{
     f.onclick = ()=>{
-      const row = Number(f.dataset.row);
-      const orden = dataCache.devoluciones.find(d=>d._row===row);
-      formularioRecepcion(orden, sku);
+      const m = mediacionesSku[Number(f.dataset.mediacionIdx)];
+      const filaExistente = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === m.numeroDeOrden.trim());
+      if(filaExistente){
+        formularioRecepcion(filaExistente, sku);
+      } else {
+        // No hay fila todavia: se va a crear una nueva, ya marcada "En mediacion".
+        const ordenSintetica = {
+          'Numero de orden': m.numeroDeOrden,
+          MarketPlace: m.marketplace || 'No identificado',
+          Fecha: m.fecha,
+          Cantidad: m.cantidad,
+          'En mediacion': 'Si'
+        };
+        formularioRecepcion(ordenSintetica, sku);
+      }
     };
   });
 }
@@ -388,14 +407,17 @@ function formularioRecepcion(orden, sku){
     msg.innerHTML = '<div class="msg">Guardando...</div>';
     try{
       let res;
-      if(orden){
+      if(orden && orden._row){
         datos._row = orden._row;
         res = await llamarBackend({action:'actualizar', data: datos});
       } else {
         datos.SKU = sku;
-        datos['Numero de orden'] = 'SIN-ORDEN-'+Date.now();
-        datos.MarketPlace = 'No declarado';
-        datos.Fecha = hoy;
+        datos['Numero de orden'] = (orden && orden['Numero de orden']) ? orden['Numero de orden'] : ('SIN-ORDEN-'+Date.now());
+        datos.MarketPlace = (orden && orden.MarketPlace) || 'No declarado';
+        datos.Fecha = (orden && orden.Fecha) || hoy;
+        if(orden && orden['En mediacion']==='Si'){
+          datos['En mediacion'] = 'Si';
+        }
         res = await llamarBackend({action:'crear', data: datos});
       }
       if(res.ok){
