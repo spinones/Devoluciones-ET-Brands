@@ -306,9 +306,26 @@ function ligarRecibir(){
   };
 }
 
+function buscarEnCatalogo(ean){
+  const eanLimpio = String(ean).trim();
+  // Match exacto primero.
+  let entrada = dataCache.catalogo.find(c => String(c.EAN).trim() === eanLimpio);
+  if(entrada) return entrada;
+  // Algunos lectores leen un EAN-13 que empieza en 0 como si fuera UPC-A de 12 digitos,
+  // y se comen el cero inicial. Probamos agregandolo.
+  entrada = dataCache.catalogo.find(c => String(c.EAN).trim() === '0'+eanLimpio);
+  if(entrada) return entrada;
+  // Caso inverso: que el catalogo tenga el codigo sin el cero y el escaneo lo traiga con el.
+  if(eanLimpio.startsWith('0')){
+    entrada = dataCache.catalogo.find(c => String(c.EAN).trim() === eanLimpio.slice(1));
+    if(entrada) return entrada;
+  }
+  return null;
+}
+
 function procesarEAN(ean){
   contextoRecepcion.ean = ean;
-  const entradaCatalogo = dataCache.catalogo.find(c => String(c.EAN).trim() === String(ean).trim());
+  const entradaCatalogo = buscarEnCatalogo(ean);
   const cont = document.getElementById('resultadoRecibir');
 
   if(!entradaCatalogo){
