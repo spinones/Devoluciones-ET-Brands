@@ -335,7 +335,7 @@ function mostrarOrdenesPendientes(sku, nombreProducto){
   // ya procesado. La planilla solo se consulta para ver si esta orden ya tiene una fila
   // (para continuar/actualizarla) o si hay que crear una nueva.
   const mediacionesSku = (dataCache.mediacionesProfitGuard || []).filter(m =>
-    String(m.sku).trim() === String(sku).trim()
+    String(m.sku).trim().toUpperCase() === String(sku).trim().toUpperCase()
   );
 
   let html = `<div class="msg ok">SKU identificado: <b>${sku}</b>${nombreProducto ? ' · '+nombreProducto : ''}</div>`;
