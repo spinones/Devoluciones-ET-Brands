@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Devoluciones ET Brands</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="iconos/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="iconos/icon-180.png">
+<meta name="theme-color" content="#E94D1A">
 <style>
   :root{
     --naranja:#E94D1A; --gris:#878785; --fondo:#f4f4f2; --texto:#26251f;
@@ -42,6 +46,18 @@
   nav.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--borde);display:flex;}
   nav.bottom button{flex:1;padding:12px;background:none;border:none;font-size:12px;font-weight:600;color:var(--gris);cursor:pointer;}
   nav.bottom button.activo{color:var(--naranja);}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}
+  .kpi{background:var(--card);border:1px solid var(--borde);border-radius:10px;padding:10px;text-align:center;}
+  .kpi .num{font-size:22px;font-weight:700;color:#E94D1A;display:block;}
+  .kpi .lbl{font-size:11px;color:var(--gris);}
+  .filtros-reporte{display:flex;flex-wrap:wrap;gap:8px;}
+  .filtros-reporte > div{flex:1;min-width:120px;}
+  .filtros-reporte label{margin-bottom:2px;}
+  .filtros-reporte input, .filtros-reporte select{margin-bottom:0;}
+  table.tabla-reporte{width:100%;border-collapse:collapse;font-size:12px;}
+  table.tabla-reporte th{text-align:left;padding:6px 4px;border-bottom:2px solid var(--borde);color:var(--gris);position:sticky;top:0;background:#fff;}
+  table.tabla-reporte td{padding:6px 4px;border-bottom:1px solid #eee;white-space:nowrap;}
+  .tabla-scroll{overflow-x:auto;max-height:400px;overflow-y:auto;}
 </style>
 </head>
 <body>
@@ -49,6 +65,7 @@
 <div id="app"></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
 /* ================== CONFIGURACION ================== */
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGTmOzuslpDP2U9k_luyANTyAa_EhGxZ0x-rtyoimFYiNE-kcDqXvoelh3au-ThXhI/exec';
@@ -130,7 +147,7 @@ function render(){
 
   app.innerHTML = `
     <header>
-      <h1>Devoluciones ET Brands</h1>
+      <h1 style="display:flex;align-items:center;gap:8px;"><img src="iconos/icon-32.png" alt="" style="width:22px;height:22px;border-radius:6px;">Devoluciones ET Brands</h1>
       <div class="user">${sesion.nombre} · <a href="#" id="logout" style="color:#fff;">salir</a></div>
     </header>
     <main id="main"></main>
@@ -138,6 +155,7 @@ function render(){
       <button data-p="home" class="${pantalla==='home'?'activo':''}">Inicio</button>
       <button data-p="recibir" class="${pantalla==='recibir'?'activo':''}">Recibir</button>
       <button data-p="gestionar" class="${pantalla==='gestionar'?'activo':''}">Pendientes</button>
+      <button data-p="reportes" class="${pantalla==='reportes'?'activo':''}">Reportes</button>
     </nav>
   `;
   document.getElementById('logout').onclick = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
@@ -149,6 +167,7 @@ function render(){
   if (pantalla==='home') main.innerHTML = vistaHome();
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
+  if (pantalla==='reportes') { main.innerHTML = vistaReportes(); ligarReportes(); }
 }
 
 /* ================== LOGIN ================== */
@@ -156,7 +175,8 @@ function vistaLogin(){
   return `
     <main style="padding-top:60px;">
       <div class="card" style="text-align:center;">
-        <h2 style="color:#E94D1A;">Devoluciones ET Brands</h2>
+        <img src="iconos/logo_header.png" alt="ET Brands" style="max-width:180px;margin-bottom:14px;">
+        <h2 style="color:#E94D1A;margin-top:0;">Devoluciones ET Brands</h2>
         <div id="loginMsg"></div>
         <label>Usuario</label>
         <input id="loginUsuario" autocomplete="username">
@@ -575,7 +595,217 @@ function abrirEdicion(item){
   };
 }
 
+/* ================== REPORTES ================== */
+let chartTendenciaInst = null, chartClasifInst = null, chartMktInst = null;
+
+function fechaEfectiva(d){
+  return d['Fecha recepcion bodega'] || d['Fecha'] || '';
+}
+
+function vistaReportes(){
+  const hoy = new Date();
+  const hace30 = new Date(); hace30.setDate(hoy.getDate()-30);
+  const marketplaces = Array.from(new Set(dataCache.devoluciones.map(d=>d.MarketPlace).filter(Boolean))).sort();
+
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Filtros</h3>
+      <div class="filtros-reporte">
+        <div>
+          <label>Desde</label>
+          <input type="date" id="rDesde" value="${hace30.toISOString().slice(0,10)}">
+        </div>
+        <div>
+          <label>Hasta</label>
+          <input type="date" id="rHasta" value="${hoy.toISOString().slice(0,10)}">
+        </div>
+        <div>
+          <label>Estado de gestión</label>
+          <select id="rEstado">
+            <option value="">Todos</option>
+            ${ESTADOS_GESTION.map(e=>`<option value="${e}">${e}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Clasificación</label>
+          <select id="rClasificacion">
+            <option value="">Todas</option>
+            <option value="REINTEGRABLE">Reintegrable</option>
+            <option value="REACONDICIONABLE">Reacondicionable</option>
+            <option value="MERMA">Merma</option>
+          </select>
+        </div>
+        <div>
+          <label>Marketplace</label>
+          <select id="rMarketplace">
+            <option value="">Todos</option>
+            ${marketplaces.map(m=>`<option value="${m}">${m}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="kpisReporte" class="kpis"></div>
+
+    <div class="card">
+      <h4 style="margin-top:0;">Volumen procesado en el tiempo</h4>
+      <canvas id="chartTendencia" height="160"></canvas>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">Clasificación</h4>
+      <canvas id="chartClasificacion" height="160"></canvas>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0;">Por marketplace</h4>
+      <canvas id="chartMarketplace" height="160"></canvas>
+    </div>
+
+    <div class="card">
+      <h4 style="margin-top:0;">Detalle <span id="tituloDetalle" style="color:#878785;font-weight:400;font-size:12px;"></span></h4>
+      <div class="tabla-scroll">
+        <table class="tabla-reporte">
+          <thead><tr>
+            <th>Orden</th><th>SKU</th><th>Marketplace</th><th>Fecha recepción</th><th>Clasificación</th><th>Estado</th><th>Responsable</th>
+          </tr></thead>
+          <tbody id="filasDetalleReporte"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function ligarReportes(){
+  ['rDesde','rHasta','rEstado','rClasificacion','rMarketplace'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', actualizarReportes);
+    document.getElementById(id).addEventListener('change', actualizarReportes);
+  });
+  actualizarReportes();
+}
+
+function actualizarReportes(){
+  const desde = document.getElementById('rDesde').value;
+  const hasta = document.getElementById('rHasta').value;
+  const estado = document.getElementById('rEstado').value;
+  const clasificacion = document.getElementById('rClasificacion').value;
+  const marketplace = document.getElementById('rMarketplace').value;
+
+  const filtradas = dataCache.devoluciones.filter(d=>{
+    const f = fechaEfectiva(d);
+    if(!f) return false;
+    const fechaComparable = String(f).slice(0,10);
+    if(desde && fechaComparable < desde) return false;
+    if(hasta && fechaComparable > hasta) return false;
+    if(estado && (d['Estado de gestion']||'') !== estado) return false;
+    if(clasificacion && d.Clasificacion !== clasificacion) return false;
+    if(marketplace && d.MarketPlace !== marketplace) return false;
+    return true;
+  });
+
+  pintarKpis(filtradas);
+  pintarChartTendencia(filtradas);
+  pintarChartClasificacion(filtradas);
+  pintarChartMarketplace(filtradas);
+  pintarTablaDetalle(filtradas);
+}
+
+function pintarKpis(filas){
+  const total = filas.length;
+  const reintegrable = filas.filter(d=>d.Clasificacion==='REINTEGRABLE').length;
+  const reacondicionable = filas.filter(d=>d.Clasificacion==='REACONDICIONABLE').length;
+  const merma = filas.filter(d=>d.Clasificacion==='MERMA').length;
+
+  const conAmbasFechas = filas.filter(d=>d.Fecha && d['Fecha recepcion bodega']);
+  let promedioDias = '—';
+  if(conAmbasFechas.length){
+    const suma = conAmbasFechas.reduce((acc,d)=>{
+      const dias = (new Date(d['Fecha recepcion bodega']) - new Date(d.Fecha)) / 86400000;
+      return acc + (isNaN(dias) ? 0 : dias);
+    },0);
+    promedioDias = (suma / conAmbasFechas.length).toFixed(1);
+  }
+
+  document.getElementById('kpisReporte').innerHTML = `
+    <div class="kpi"><span class="num">${total}</span><span class="lbl">Procesadas en el rango</span></div>
+    <div class="kpi"><span class="num">${promedioDias}</span><span class="lbl">Días promedio orden → recepción</span></div>
+    <div class="kpi"><span class="num">${reintegrable}</span><span class="lbl">Reintegrables</span></div>
+    <div class="kpi"><span class="num">${reacondicionable + merma}</span><span class="lbl">Reacondicionables + Merma</span></div>
+  `;
+}
+
+function pintarChartTendencia(filas){
+  const porDia = {};
+  filas.forEach(d=>{
+    const f = String(fechaEfectiva(d)).slice(0,10);
+    porDia[f] = (porDia[f]||0)+1;
+  });
+  const dias = Object.keys(porDia).sort();
+  const valores = dias.map(d=>porDia[d]);
+
+  const ctx = document.getElementById('chartTendencia');
+  if(chartTendenciaInst) chartTendenciaInst.destroy();
+  chartTendenciaInst = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: dias, datasets: [{ label: 'Procesadas', data: valores, backgroundColor: '#E94D1A' }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ticks:{maxRotation:60,minRotation:60}} } }
+  });
+}
+
+function pintarChartClasificacion(filas){
+  const conteo = { REINTEGRABLE:0, REACONDICIONABLE:0, MERMA:0, 'Sin clasificar':0 };
+  filas.forEach(d=>{
+    const c = d.Clasificacion;
+    if(c==='REINTEGRABLE'||c==='REACONDICIONABLE'||c==='MERMA') conteo[c]++;
+    else conteo['Sin clasificar']++;
+  });
+  const ctx = document.getElementById('chartClasificacion');
+  if(chartClasifInst) chartClasifInst.destroy();
+  chartClasifInst = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(conteo),
+      datasets: [{ data: Object.values(conteo), backgroundColor: ['#1d9e75','#ba7517','#c0392b','#878785'] }]
+    },
+    options: { responsive:true }
+  });
+}
+
+function pintarChartMarketplace(filas){
+  const conteo = {};
+  filas.forEach(d=>{
+    const m = d.MarketPlace || 'Sin identificar';
+    conteo[m] = (conteo[m]||0)+1;
+  });
+  const etiquetas = Object.keys(conteo);
+  const ctx = document.getElementById('chartMarketplace');
+  if(chartMktInst) chartMktInst.destroy();
+  chartMktInst = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: etiquetas, datasets: [{ label:'Procesadas', data: etiquetas.map(e=>conteo[e]), backgroundColor:'#878785' }] },
+    options: { responsive:true, indexAxis:'y', plugins:{legend:{display:false}} }
+  });
+}
+
+function pintarTablaDetalle(filas){
+  document.getElementById('tituloDetalle').textContent = `(mostrando ${Math.min(filas.length,200)} de ${filas.length})`;
+  const ordenadas = filas.slice().sort((a,b)=> new Date(fechaEfectiva(b)) - new Date(fechaEfectiva(a)));
+  document.getElementById('filasDetalleReporte').innerHTML = ordenadas.slice(0,200).map(d=>`
+    <tr>
+      <td>${d['Numero de orden']}</td>
+      <td>${d.SKU}</td>
+      <td>${d.MarketPlace||''}</td>
+      <td>${fechaEfectiva(d)}</td>
+      <td>${d.Clasificacion||''}</td>
+      <td>${d['Estado de gestion']||''}</td>
+      <td>${d.Responsable||''}</td>
+    </tr>`).join('');
+}
+
 /* ================== INICIO ================== */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
 render();
 </script>
 </body>
