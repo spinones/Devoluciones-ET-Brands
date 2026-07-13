@@ -66,6 +66,7 @@
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
 /* ================== CONFIGURACION ================== */
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGTmOzuslpDP2U9k_luyANTyAa_EhGxZ0x-rtyoimFYiNE-kcDqXvoelh3au-ThXhI/exec';
@@ -596,6 +597,9 @@ function abrirEdicion(item){
 }
 
 /* ================== REPORTES ================== */
+if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+  Chart.register(ChartDataLabels);
+}
 let chartTendenciaInst = null, chartClasifInst = null, chartMktInst = null;
 
 function fechaEfectiva(d){
@@ -746,7 +750,14 @@ function pintarChartTendencia(filas){
   chartTendenciaInst = new Chart(ctx, {
     type: 'bar',
     data: { labels: dias, datasets: [{ label: 'Procesadas', data: valores, backgroundColor: '#E94D1A' }] },
-    options: { responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ticks:{maxRotation:60,minRotation:60}} } }
+    options: {
+      responsive:true,
+      plugins:{
+        legend:{display:false},
+        datalabels:{ anchor:'end', align:'top', color:'#26251f', font:{weight:'600', size:11} }
+      },
+      scales:{ x:{ticks:{maxRotation:60,minRotation:60}}, y:{beginAtZero:true} }
+    }
   });
 }
 
@@ -765,7 +776,16 @@ function pintarChartClasificacion(filas){
       labels: Object.keys(conteo),
       datasets: [{ data: Object.values(conteo), backgroundColor: ['#1d9e75','#ba7517','#c0392b','#878785'] }]
     },
-    options: { responsive:true }
+    options: {
+      responsive:true,
+      plugins:{
+        datalabels:{
+          color:'#fff',
+          font:{weight:'700', size:12},
+          formatter:(valor)=> valor > 0 ? valor : ''
+        }
+      }
+    }
   });
 }
 
@@ -781,7 +801,15 @@ function pintarChartMarketplace(filas){
   chartMktInst = new Chart(ctx, {
     type: 'bar',
     data: { labels: etiquetas, datasets: [{ label:'Procesadas', data: etiquetas.map(e=>conteo[e]), backgroundColor:'#878785' }] },
-    options: { responsive:true, indexAxis:'y', plugins:{legend:{display:false}} }
+    options: {
+      responsive:true,
+      indexAxis:'y',
+      plugins:{
+        legend:{display:false},
+        datalabels:{ anchor:'end', align:'end', color:'#26251f', font:{weight:'600', size:11} }
+      },
+      scales:{ x:{beginAtZero:true} }
+    }
   });
 }
 
