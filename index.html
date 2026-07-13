@@ -149,7 +149,7 @@ function render(){
   app.innerHTML = `
     <header>
       <h1 style="display:flex;align-items:center;gap:8px;"><img src="icon-32.png" alt="" style="width:22px;height:22px;border-radius:6px;">Devoluciones ET Brands</h1>
-      <div class="user">${sesion.nombre} · <a href="#" id="logout" style="color:#fff;">salir</a></div>
+      <div class="user">${sesion.nombre} · <a href="#" id="btnCambiarClave" style="color:#fff;">clave</a> · <a href="#" id="logout" style="color:#fff;">salir</a></div>
     </header>
     <main id="main"></main>
     <nav class="bottom">
@@ -157,9 +157,11 @@ function render(){
       <button data-p="recibir" class="${pantalla==='recibir'?'activo':''}">Recibir</button>
       <button data-p="gestionar" class="${pantalla==='gestionar'?'activo':''}">Pendientes</button>
       <button data-p="reportes" class="${pantalla==='reportes'?'activo':''}">Reportes</button>
+      ${sesion.rol==='admin' ? `<button data-p="usuarios" class="${pantalla==='usuarios'?'activo':''}">Usuarios</button>` : ''}
     </nav>
   `;
   document.getElementById('logout').onclick = (e)=>{ e.preventDefault(); sesion=null; pantalla='login'; render(); };
+  document.getElementById('btnCambiarClave').onclick = (e)=>{ e.preventDefault(); pantalla='cambiarClave'; render(); };
   document.querySelectorAll('nav.bottom button').forEach(b=>{
     b.onclick = ()=>{ pantalla=b.dataset.p; contextoRecepcion={ean:'',sku:'',ordenSeleccionada:null}; render(); };
   });
@@ -169,6 +171,8 @@ function render(){
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
   if (pantalla==='reportes') { main.innerHTML = vistaReportes(); ligarReportes(); }
+  if (pantalla==='cambiarClave') { main.innerHTML = vistaCambiarClave(); ligarCambiarClave(); }
+  if (pantalla==='usuarios' && sesion.rol==='admin') { main.innerHTML = vistaUsuarios(); ligarUsuarios(); }
 }
 
 /* ================== LOGIN ================== */
@@ -826,6 +830,128 @@ function pintarTablaDetalle(filas){
       <td>${d['Estado de gestion']||''}</td>
       <td>${d.Responsable||''}</td>
     </tr>`).join('');
+}
+
+/* ================== CAMBIAR CLAVE (cualquier usuario) ================== */
+function vistaCambiarClave(){
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Cambiar mi clave</h3>
+      <div id="msgClave"></div>
+      <label>Clave actual</label>
+      <input id="claveActual" type="password">
+      <label>Clave nueva</label>
+      <input id="claveNueva1" type="password">
+      <label>Repetir clave nueva</label>
+      <input id="claveNueva2" type="password">
+      <button class="btn" id="btnGuardarClave">Guardar</button>
+      <button class="btn secundario" id="btnCancelarClave">Cancelar</button>
+    </div>
+  `;
+}
+function ligarCambiarClave(){
+  document.getElementById('btnCancelarClave').onclick = ()=>{ pantalla='home'; render(); };
+  document.getElementById('btnGuardarClave').onclick = async ()=>{
+    const actual = document.getElementById('claveActual').value;
+    const nueva1 = document.getElementById('claveNueva1').value;
+    const nueva2 = document.getElementById('claveNueva2').value;
+    const msg = document.getElementById('msgClave');
+    if(!actual || !nueva1){ msg.innerHTML = '<div class="msg err">Completa todos los campos.</div>'; return; }
+    if(nueva1 !== nueva2){ msg.innerHTML = '<div class="msg err">Las claves nuevas no coinciden.</div>'; return; }
+    msg.innerHTML = '<div class="msg">Guardando...</div>';
+    const claveActualHash = await sha256(actual);
+    const claveNuevaHash = await sha256(nueva1);
+    const res = await llamarBackend({action:'cambiarClave', data:{ usuario: sesion.usuario, claveActualHash, claveNuevaHash }});
+    if(res.ok){
+      msg.innerHTML = '<div class="msg ok">Clave actualizada.</div>';
+      setTimeout(()=>{ pantalla='home'; render(); }, 900);
+    } else {
+      msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
+    }
+  };
+}
+
+/* ================== USUARIOS (solo admin) ================== */
+function vistaUsuarios(){
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Usuarios</h3>
+      <div id="listaUsuarios">
+        ${dataCache.usuarios.map(u=>`
+          <div class="fila-orden" data-usuario="${u.Usuario}">
+            <div class="info"><b>${u.Usuario}</b><span>${u.Nombre||''} · ${u.Rol}</span></div>
+          </div>`).join('')}
+      </div>
+      <button class="btn" id="btnNuevoUsuario">+ Crear usuario</button>
+    </div>
+    <div id="formUsuario"></div>
+  `;
+}
+
+function ligarUsuarios(){
+  document.getElementById('btnNuevoUsuario').onclick = ()=> formularioUsuario(null);
+  document.querySelectorAll('#listaUsuarios .fila-orden').forEach(f=>{
+    f.onclick = ()=>{
+      const u = dataCache.usuarios.find(x=>x.Usuario===f.dataset.usuario);
+      formularioUsuario(u);
+    };
+  });
+}
+
+function formularioUsuario(usuarioExistente){
+  const cont = document.getElementById('formUsuario');
+  cont.innerHTML = `
+    <div class="card" style="border:2px solid #E94D1A;">
+      <h4 style="margin-top:0;">${usuarioExistente ? 'Editar '+usuarioExistente.Usuario : 'Nuevo usuario'}</h4>
+      <div id="msgUsuario"></div>
+      <label>Usuario</label>
+      <input id="fUsuario" value="${usuarioExistente ? usuarioExistente.Usuario : ''}" ${usuarioExistente ? 'disabled' : ''}>
+      <label>Nombre</label>
+      <input id="fNombre" value="${usuarioExistente ? (usuarioExistente.Nombre||'') : ''}">
+      <label>Rol</label>
+      <select id="fRol">
+        <option value="operario" ${usuarioExistente && usuarioExistente.Rol==='operario' ? 'selected':''}>operario</option>
+        <option value="admin" ${usuarioExistente && usuarioExistente.Rol==='admin' ? 'selected':''}>admin</option>
+      </select>
+      <label>${usuarioExistente ? 'Nueva clave (dejar en blanco para no cambiarla)' : 'Clave'}</label>
+      <input id="fClave" type="password">
+      <hr style="border:none;border-top:1px solid #eee;margin:14px 0;">
+      <label>Tu clave de administrador (para autorizar este cambio)</label>
+      <input id="fAdminClave" type="password">
+      <button class="btn" id="btnGuardarUsuario">Guardar</button>
+      <button class="btn secundario" id="btnCancelarUsuario">Cancelar</button>
+    </div>
+  `;
+  document.getElementById('btnCancelarUsuario').onclick = ()=>{ cont.innerHTML=''; };
+  document.getElementById('btnGuardarUsuario').onclick = async ()=>{
+    const msg = document.getElementById('msgUsuario');
+    const nuevoNombreUsuario = document.getElementById('fUsuario').value.trim();
+    const nombre = document.getElementById('fNombre').value.trim();
+    const rol = document.getElementById('fRol').value;
+    const clave = document.getElementById('fClave').value;
+    const adminClave = document.getElementById('fAdminClave').value;
+    if(!adminClave){ msg.innerHTML = '<div class="msg err">Ingresa tu clave de administrador.</div>'; return; }
+    if(!usuarioExistente && (!nuevoNombreUsuario || !clave)){ msg.innerHTML = '<div class="msg err">Usuario y clave son obligatorios.</div>'; return; }
+
+    msg.innerHTML = '<div class="msg">Guardando...</div>';
+    const adminClaveHash = await sha256(adminClave);
+    let res;
+    if(usuarioExistente){
+      const cambios = { Rol: rol, Nombre: nombre };
+      if(clave) cambios.PasswordHash = await sha256(clave);
+      res = await llamarBackend({action:'editarUsuario', data:{ adminUsuario: sesion.usuario, adminClaveHash, usuario: usuarioExistente.Usuario, cambios }});
+    } else {
+      const nuevoUsuario = { Usuario: nuevoNombreUsuario, PasswordHash: await sha256(clave), Rol: rol, Nombre: nombre };
+      res = await llamarBackend({action:'crearUsuario', data:{ adminUsuario: sesion.usuario, adminClaveHash, nuevoUsuario }});
+    }
+    if(res.ok){
+      msg.innerHTML = '<div class="msg ok">Guardado.</div>';
+      await cargarDatos();
+      setTimeout(()=>{ pantalla='usuarios'; render(); }, 800);
+    } else {
+      msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
+    }
+  };
 }
 
 /* ================== INICIO ================== */
