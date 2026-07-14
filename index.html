@@ -114,6 +114,7 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ================== CONFIGURACION ================== */
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGTmOzuslpDP2U9k_luyANTyAa_EhGxZ0x-rtyoimFYiNE-kcDqXvoelh3au-ThXhI/exec';
@@ -867,27 +868,36 @@ function ligarReportes(){
 }
 
 function descargarDetalleExcel(){
-  const columnas = ['Numero de orden','SKU','MarketPlace','Fecha recepcion bodega','Clasificacion','Estado de gestion','Responsable'];
   const encabezados = ['Orden','SKU','Marketplace','Fecha recepción','Clasificación','Estado','Responsable'];
-  const escaparCelda = (valor)=>{
-    const texto = (valor===undefined || valor===null) ? '' : String(valor);
-    if(/[",;\n]/.test(texto)) return '"' + texto.replace(/"/g,'""') + '"';
-    return texto;
-  };
-  const filasCSV = [encabezados.join(';')];
-  filasReporteActual.forEach(d=>{
-    filasCSV.push(columnas.map(c => escaparCelda(c==='Fecha recepcion bodega' ? fechaEfectiva(d) : d[c])).join(';'));
-  });
-  const contenido = '\uFEFF' + filasCSV.join('\r\n'); // BOM para que Excel reconozca tildes bien
-  const blob = new Blob([contenido], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `reporte_devoluciones_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const filas = filasReporteActual.map(d => [
+    d['Numero de orden'],
+    d.SKU,
+    d.MarketPlace,
+    fechaEfectiva(d),
+    d.Clasificacion,
+    d['Estado de gestion'],
+    d.Responsable
+  ]);
+
+  const hoja = XLSX.utils.aoa_to_sheet([encabezados, ...filas]);
+  // Fuerza Orden (col A) y SKU (col B) como texto explicito, para que Excel no les
+  // quite ceros iniciales ni los pase a notacion cientifica en numeros largos.
+  const totalFilas = filas.length;
+  for(let i = 2; i <= totalFilas + 1; i++){
+    ['A','B'].forEach(col=>{
+      const celda = hoja[col + i];
+      if(celda){
+        celda.t = 's';
+        celda.v = String(celda.v);
+        celda.z = '@';
+      }
+    });
+  }
+  hoja['!cols'] = [{wch:22},{wch:16},{wch:14},{wch:22},{wch:16},{wch:14},{wch:18}];
+
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'Reporte');
+  XLSX.writeFile(libro, `reporte_devoluciones_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 function actualizarReportes(){
