@@ -567,6 +567,12 @@ function formularioRecepcion(orden, sku){
       <h4 style="margin-top:0;">${orden ? 'Orden '+orden['Numero de orden'] : 'Devolución no declarada'} · SKU ${sku}</h4>
       ${enMediacion ? `<div class="msg err">⚠ Esta orden está en mediación con el comprador (SAC la sigue por su cuenta). Aquí solo registramos la recepción física.</div>` : ''}
       ${esCanceladaConRetorno ? `<div class="msg err">⚠ Esta orden fue cancelada después de haber salido de bodega — corresponde recibirla igual que una devolución normal.</div>` : ''}
+      ${!orden ? `
+      <label>Número de orden</label>
+      <input id="fNumeroOrden" placeholder="El que tengas: de MELI, Falabella, u otro marketplace no integrado">
+      <label>Marketplace</label>
+      <input id="fMarketplace" placeholder="Ej: Falabella, MELI, Walmart, Paris...">
+      ` : ''}
       <label>Cantidad recibida</label>
       <input id="fCantidad" type="number" min="1" value="${orden ? (orden.Cantidad||1) : 1}">
       <label>Especificación</label>
@@ -611,8 +617,12 @@ function formularioRecepcion(orden, sku){
         res = await llamarBackend({action:'actualizar', data: datos});
       } else {
         datos.SKU = sku;
-        datos['Numero de orden'] = (orden && orden['Numero de orden']) ? orden['Numero de orden'] : ('SIN-ORDEN-'+Date.now());
-        datos.MarketPlace = (orden && orden.MarketPlace) || 'No declarado';
+        datos['Numero de orden'] = (orden && orden['Numero de orden'])
+          ? orden['Numero de orden']
+          : (document.getElementById('fNumeroOrden').value.trim() || ('SIN-ORDEN-'+Date.now()));
+        datos.MarketPlace = (orden && orden.MarketPlace)
+          ? orden.MarketPlace
+          : (document.getElementById('fMarketplace').value.trim() || 'No declarado');
         datos.Fecha = (orden && orden.Fecha) || hoy;
         if(orden && orden['En mediacion']==='Si'){
           datos['En mediacion'] = 'Si';
