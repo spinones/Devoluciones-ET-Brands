@@ -1188,7 +1188,7 @@ function pintarTarjetaOrden(o){
             Clasificación: <b>${fila.Clasificacion||'—'}</b> ·
             Fecha recepción: <b>${fila['Fecha recepcion bodega']||'—'}</b> ·
             Responsable: <b>${fila.Responsable||'—'}</b><br>
-            Gestionado por marketplace: <b>${fila['Gestionado por marketplace']||'No'}</b> ·
+            Gestionado por marketplace: <b>${fila['Gestionado por marketplace']||'Sin revisar'}</b> ·
             Tipo de orden: <b>${fila['Es Full']==='Si' ? 'Full' : 'Normal'}</b>
           </p>
         ` : `<p style="font-size:12px;color:#878785;margin:4px 0 0;">Todavía no hay ninguna fila registrada para esta orden en la planilla.</p>`}
@@ -1202,7 +1202,7 @@ function vistaMarketplace(){
   return `
     <div class="card">
       <h3 style="margin-top:0;">Gestión por marketplace / Full</h3>
-      <p style="font-size:12px;color:#878785;margin-top:-6px;">Marca, por cada orden ya recibida, si el caso se resolvió directo en el marketplace y si es una orden tipo Full. Esto es independiente de la recepción física en bodega.</p>
+      <p style="font-size:12px;color:#878785;margin-top:-6px;">Por cada orden ya recibida en bodega, marca cómo quedó en el marketplace: Conforme, Full (no aplica evaluación), o Rechazado. Mientras no marques nada, se entiende que esa revisión todavía no se ha hecho — es un proceso separado de la recepción física.</p>
       <div class="top-bar">
         <input id="mktBuscar" placeholder="Buscar por número de orden o SKU">
         <select id="mktFiltroPendiente">
@@ -1221,7 +1221,7 @@ function ligarMarketplace(){
     const soloPendientes = document.getElementById('mktFiltroPendiente').value === 'pendiente';
     let filas = dataCache.devoluciones.filter(d=>{
       if(texto && !String(d['Numero de orden']).toLowerCase().includes(texto) && !String(d.SKU).toLowerCase().includes(texto)) return false;
-      if(soloPendientes && (d['Gestionado por marketplace'] || d['Es Full'])) return false;
+      if(soloPendientes && d['Gestionado por marketplace']) return false;
       return true;
     });
     filas = filas.slice().sort((a,b)=> new Date(b['Fecha recepcion bodega']||b.Fecha) - new Date(a['Fecha recepcion bodega']||a.Fecha));
@@ -1238,38 +1238,33 @@ function ligarMarketplace(){
             <span style="font-size:12px;color:#878785;">${d.MarketPlace||''} · ${d['Fecha recepcion bodega']||d.Fecha||''}</span>
           </div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:180px;">
-            <label style="margin-bottom:2px;">Gestionado por marketplace</label>
-            <select class="mktSelectGestion" data-row="${d._row}" style="margin-bottom:0;">
-              <option value="No" ${d['Gestionado por marketplace']!=='Si'?'selected':''}>No</option>
-              <option value="Si" ${d['Gestionado por marketplace']==='Si'?'selected':''}>Sí</option>
-            </select>
-          </div>
-          <div style="flex:1;min-width:150px;">
-            <label style="margin-bottom:2px;">Tipo de orden</label>
-            <select class="mktSelectFull" data-row="${d._row}" style="margin-bottom:0;">
-              <option value="No" ${d['Es Full']!=='Si'?'selected':''}>Normal</option>
-              <option value="Si" ${d['Es Full']==='Si'?'selected':''}>Full</option>
-            </select>
-          </div>
+        <div style="display:flex;gap:8px;">
+          <button class="mktOpcion" data-row="${d._row}" data-valor="Conforme" style="flex:1;padding:12px;border-radius:8px;border:2px solid #1d9e75;background:${d['Gestionado por marketplace']==='Conforme'?'#1d9e75':'#fff'};color:${d['Gestionado por marketplace']==='Conforme'?'#fff':'#1d9e75'};font-weight:700;cursor:pointer;">Conforme</button>
+          <button class="mktOpcion" data-row="${d._row}" data-valor="Full" style="flex:1;padding:12px;border-radius:8px;border:2px solid #E94D1A;background:${d['Gestionado por marketplace']==='Full'?'#E94D1A':'#fff'};color:${d['Gestionado por marketplace']==='Full'?'#fff':'#E94D1A'};font-weight:700;cursor:pointer;">Full</button>
+          <button class="mktOpcion" data-row="${d._row}" data-valor="Rechazado" style="flex:1;padding:12px;border-radius:8px;border:2px solid #c0392b;background:${d['Gestionado por marketplace']==='Rechazado'?'#c0392b':'#fff'};color:${d['Gestionado por marketplace']==='Rechazado'?'#fff':'#c0392b'};font-weight:700;cursor:pointer;">Rechazado</button>
         </div>
         <div class="mktMsg" data-row="${d._row}" style="font-size:11px;margin-top:4px;"></div>
       </div>
     `).join('');
 
-    cont.querySelectorAll('.mktSelectGestion').forEach(sel=>{
-      sel.onchange = ()=> guardarMarcaMarketplace(Number(sel.dataset.row), 'Gestionado por marketplace', sel.value);
-    });
-    cont.querySelectorAll('.mktSelectFull').forEach(sel=>{
-      sel.onchange = ()=> guardarMarcaMarketplace(Number(sel.dataset.row), 'Es Full', sel.value);
+    cont.querySelectorAll('.mktOpcion').forEach(btn=>{
+      btn.onclick = ()=>{
+        const row = Number(btn.dataset.row);
+        const fila = dataCache.devoluciones.find(x=>x._row===row);
+        const yaEstaba = fila && fila['Gestionado por marketplace'] === btn.dataset.valor;
+        // Clic sobre la opcion ya marcada la desmarca (vuelve a "sin marcar").
+        guardarMarcaMarketplace(row, 'Gestionado por marketplace', yaEstaba ? '' : btn.dataset.valor);
+      };
     });
   };
 
   document.getElementById('mktBuscar').oninput = pintar;
   document.getElementById('mktFiltroPendiente').onchange = pintar;
+  repintarMarketplace = pintar;
   pintar();
 }
+
+let repintarMarketplace = null;
 
 async function guardarMarcaMarketplace(row, campo, valor){
   const msg = document.querySelector(`.mktMsg[data-row="${row}"]`);
@@ -1279,7 +1274,8 @@ async function guardarMarcaMarketplace(row, campo, valor){
   const res = await llamarBackend({action:'actualizar', data: datos});
   const fila = dataCache.devoluciones.find(d=>d._row===row);
   if(fila) fila[campo] = valor;
-  if(msg) msg.innerHTML = res.ok ? '<span style="color:#1d9e75;">Guardado ✓</span>' : `<span style="color:#c0392b;">${res.error||'Error'}</span>`;
+  if(res.ok && repintarMarketplace) repintarMarketplace();
+  else if(msg) msg.innerHTML = `<span style="color:#c0392b;">${res.error||'Error'}</span>`;
 }
 
 /* ================== USUARIOS (solo admin) ================== */
