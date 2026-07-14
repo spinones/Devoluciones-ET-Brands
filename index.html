@@ -571,7 +571,16 @@ function formularioRecepcion(orden, sku){
       <label>Número de orden</label>
       <input id="fNumeroOrden" placeholder="El que tengas: de MELI, Falabella, u otro marketplace no integrado">
       <label>Marketplace</label>
-      <input id="fMarketplace" placeholder="Ej: Falabella, MELI, Walmart, Paris...">
+      <select id="fMarketplace">
+        <option value="Falabella">Falabella</option>
+        <option value="MELI">MELI</option>
+        <option value="Walmart">Walmart</option>
+        <option value="Paris">Paris</option>
+        <option value="Ripley">Ripley</option>
+        <option value="Bodega directa">Bodega directa</option>
+        <option value="__otro__">Otro (escribir)</option>
+      </select>
+      <input id="fMarketplaceOtro" placeholder="Nombre del marketplace" class="oculto">
       ` : ''}
       <label>Cantidad recibida</label>
       <input id="fCantidad" type="number" min="1" value="${orden ? (orden.Cantidad||1) : 1}">
@@ -599,6 +608,18 @@ function formularioRecepcion(orden, sku){
     </div>
   `;
 
+  if(!orden){
+    document.getElementById('fMarketplace').onchange = (e)=>{
+      const otroInput = document.getElementById('fMarketplaceOtro');
+      if(e.target.value === '__otro__'){
+        otroInput.classList.remove('oculto');
+        otroInput.focus();
+      } else {
+        otroInput.classList.add('oculto');
+      }
+    };
+  }
+
   document.getElementById('btnGuardarRecepcion').onclick = async ()=>{
     const datos = {
       Cantidad: document.getElementById('fCantidad').value,
@@ -622,7 +643,13 @@ function formularioRecepcion(orden, sku){
           : (document.getElementById('fNumeroOrden').value.trim() || ('SIN-ORDEN-'+Date.now()));
         datos.MarketPlace = (orden && orden.MarketPlace)
           ? orden.MarketPlace
-          : (document.getElementById('fMarketplace').value.trim() || 'No declarado');
+          : (()=>{
+              const seleccionado = document.getElementById('fMarketplace').value;
+              if(seleccionado === '__otro__'){
+                return document.getElementById('fMarketplaceOtro').value.trim() || 'No declarado';
+              }
+              return seleccionado || 'No declarado';
+            })();
         datos.Fecha = (orden && orden.Fecha) || hoy;
         if(orden && orden['En mediacion']==='Si'){
           datos['En mediacion'] = 'Si';
