@@ -195,7 +195,8 @@ const ICONOS_NAV = {
   gestionar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>`,
   reportes: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M12 20V4M20 20v-7"/><path d="M2 20h20"/></svg>`,
   usuarios: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><circle cx="17.5" cy="8.3" r="2.4"/><path d="M17 14.8c2.7.3 4.5 2 4.5 4.9"/></svg>`,
-  consultar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></svg>`
+  consultar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></svg>`,
+  marketplace: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2-4h14l2 4"/><path d="M3 7h18v13a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/><path d="M9 11a3 3 0 006 0"/></svg>`
 };
 
 function itemsNav(){
@@ -204,7 +205,8 @@ function itemsNav(){
     { id:'recibir', label:'Recibir' },
     { id:'gestionar', label:'Pendientes' },
     { id:'reportes', label:'Reportes' },
-    { id:'consultar', label:'Consultar' }
+    { id:'consultar', label:'Consultar' },
+    { id:'marketplace', label:'Marketplace' }
   ];
   if(sesion && sesion.rol==='admin') items.push({ id:'usuarios', label:'Usuarios' });
   return items;
@@ -269,6 +271,7 @@ function render(){
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
   if (pantalla==='reportes') { main.innerHTML = vistaReportes(); ligarReportes(); }
   if (pantalla==='consultar') { main.innerHTML = vistaConsultar(); ligarConsultar(); }
+  if (pantalla==='marketplace') { main.innerHTML = vistaMarketplace(); ligarMarketplace(); }
   if (pantalla==='cambiarClave') { main.innerHTML = vistaCambiarClave(); ligarCambiarClave(); }
   if (pantalla==='usuarios' && sesion.rol==='admin') { main.innerHTML = vistaUsuarios(); ligarUsuarios(); }
 }
@@ -568,7 +571,7 @@ function formularioRecepcion(orden, sku){
   cont.innerHTML = `
     <div class="card" style="border:2px solid ${(enMediacion||esCanceladaConRetorno)?'#c0392b':'#E94D1A'};">
       <h4 style="margin-top:0;">${orden ? 'Orden '+orden['Numero de orden'] : 'Devolución no declarada'} · SKU ${sku}</h4>
-      ${enMediacion ? `<div class="msg err">⚠ Esta orden está en mediación con el comprador (SAC la sigue por su cuenta). Aquí solo registramos la recepción física.</div>` : ''}
+      ${enMediacion ? `<div class="msg err">⚠ Esta orden está en mediación con el comprador (se sigue por otro canal). Aquí solo registramos la recepción física.</div>` : ''}
       ${esCanceladaConRetorno ? `<div class="msg err">⚠ Esta orden fue cancelada después de haber salido de bodega — corresponde recibirla igual que una devolución normal.</div>` : ''}
       ${!orden ? `
       <label>Número de orden</label>
@@ -606,16 +609,6 @@ function formularioRecepcion(orden, sku){
         <option value="Recibido">Recibido</option>
         <option value="Evaluado">Evaluado</option>
       </select>
-      <label>Gestionado por marketplace</label>
-      <select id="fGestionMkt">
-        <option value="No">No</option>
-        <option value="Si">Sí — SAC lo resolvió directo en el marketplace</option>
-      </select>
-      <label>Tipo de orden</label>
-      <select id="fEsFull">
-        <option value="No" ${(orden && orden.esFull==='Si') ? '' : 'selected'}>Normal</option>
-        <option value="Si" ${(orden && orden.esFull==='Si') ? 'selected' : ''}>Full</option>
-      </select>
       <button class="btn" id="btnGuardarRecepcion">Guardar recepción</button>
       <div id="msgGuardar"></div>
     </div>
@@ -640,9 +633,7 @@ function formularioRecepcion(orden, sku){
       Clasificacion: document.getElementById('fClasificacion').value,
       'Estado de gestion': document.getElementById('fEstadoGestion').value,
       'Fecha recepcion bodega': hoy,
-      Responsable: sesion.nombre,
-      'Gestionado por marketplace': document.getElementById('fGestionMkt').value,
-      'Es Full': document.getElementById('fEsFull').value
+      Responsable: sesion.nombre
     };
     const msg = document.getElementById('msgGuardar');
     msg.innerHTML = '<div class="msg">Guardando...</div>';
@@ -753,16 +744,6 @@ function abrirEdicion(item){
         <option value="No" ${item['Reembolso confirmado']!=='Si'?'selected':''}>No</option>
         <option value="Si" ${item['Reembolso confirmado']==='Si'?'selected':''}>Si</option>
       </select>
-      <label>Gestionado por marketplace</label>
-      <select id="eGestionMkt">
-        <option value="No" ${item['Gestionado por marketplace']!=='Si'?'selected':''}>No</option>
-        <option value="Si" ${item['Gestionado por marketplace']==='Si'?'selected':''}>Sí — SAC lo resolvió directo en el marketplace</option>
-      </select>
-      <label>Tipo de orden</label>
-      <select id="eEsFull">
-        <option value="No" ${item['Es Full']!=='Si'?'selected':''}>Normal</option>
-        <option value="Si" ${item['Es Full']==='Si'?'selected':''}>Full</option>
-      </select>
       <button class="btn" id="btnGuardarEdicion">Guardar cambios</button>
       <button class="btn gris" id="btnCancelarEdicion">Cancelar</button>
       <div id="msgEdicion"></div>
@@ -774,9 +755,7 @@ function abrirEdicion(item){
       _row: item._row,
       'Estado de gestion': document.getElementById('eEstado').value,
       'Stock actualizado': document.getElementById('eStock').value,
-      'Reembolso confirmado': document.getElementById('eReembolso').value,
-      'Gestionado por marketplace': document.getElementById('eGestionMkt').value,
-      'Es Full': document.getElementById('eEsFull').value
+      'Reembolso confirmado': document.getElementById('eReembolso').value
     };
     const msg = document.getElementById('msgEdicion');
     msg.innerHTML = '<div class="msg">Guardando...</div>';
@@ -1069,7 +1048,7 @@ function ligarCambiarClave(){
   };
 }
 
-/* ================== CONSULTAR (para SAC u operaciones) ================== */
+/* ================== CONSULTAR ================== */
 function vistaConsultar(){
   return `
     <div class="card">
@@ -1216,6 +1195,91 @@ function pintarTarjetaOrden(o){
       </div>
     </div>
   `;
+}
+
+/* ================== MARKETPLACE / FULL ================== */
+function vistaMarketplace(){
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Gestión por marketplace / Full</h3>
+      <p style="font-size:12px;color:#878785;margin-top:-6px;">Marca, por cada orden ya recibida, si el caso se resolvió directo en el marketplace y si es una orden tipo Full. Esto es independiente de la recepción física en bodega.</p>
+      <div class="top-bar">
+        <input id="mktBuscar" placeholder="Buscar por número de orden o SKU">
+        <select id="mktFiltroPendiente">
+          <option value="">Todas</option>
+          <option value="pendiente">Sin marcar todavía</option>
+        </select>
+      </div>
+      <div id="mktLista"></div>
+    </div>
+  `;
+}
+
+function ligarMarketplace(){
+  const pintar = ()=>{
+    const texto = document.getElementById('mktBuscar').value.trim().toLowerCase();
+    const soloPendientes = document.getElementById('mktFiltroPendiente').value === 'pendiente';
+    let filas = dataCache.devoluciones.filter(d=>{
+      if(texto && !String(d['Numero de orden']).toLowerCase().includes(texto) && !String(d.SKU).toLowerCase().includes(texto)) return false;
+      if(soloPendientes && (d['Gestionado por marketplace'] || d['Es Full'])) return false;
+      return true;
+    });
+    filas = filas.slice().sort((a,b)=> new Date(b['Fecha recepcion bodega']||b.Fecha) - new Date(a['Fecha recepcion bodega']||a.Fecha));
+    filas = filas.slice(0, 150);
+
+    const cont = document.getElementById('mktLista');
+    if(filas.length===0){ cont.innerHTML = '<p style="font-size:13px;color:#878785;">Sin resultados.</p>'; return; }
+
+    cont.innerHTML = filas.map(d=>`
+      <div class="card" data-row="${d._row}" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <div>
+            <b style="font-size:13px;">${d['Numero de orden']} · SKU ${d.SKU}</b><br>
+            <span style="font-size:12px;color:#878785;">${d.MarketPlace||''} · ${d['Fecha recepcion bodega']||d.Fecha||''}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;">
+            <label style="margin-bottom:2px;">Gestionado por marketplace</label>
+            <select class="mktSelectGestion" data-row="${d._row}" style="margin-bottom:0;">
+              <option value="No" ${d['Gestionado por marketplace']!=='Si'?'selected':''}>No</option>
+              <option value="Si" ${d['Gestionado por marketplace']==='Si'?'selected':''}>Sí</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:150px;">
+            <label style="margin-bottom:2px;">Tipo de orden</label>
+            <select class="mktSelectFull" data-row="${d._row}" style="margin-bottom:0;">
+              <option value="No" ${d['Es Full']!=='Si'?'selected':''}>Normal</option>
+              <option value="Si" ${d['Es Full']==='Si'?'selected':''}>Full</option>
+            </select>
+          </div>
+        </div>
+        <div class="mktMsg" data-row="${d._row}" style="font-size:11px;margin-top:4px;"></div>
+      </div>
+    `).join('');
+
+    cont.querySelectorAll('.mktSelectGestion').forEach(sel=>{
+      sel.onchange = ()=> guardarMarcaMarketplace(Number(sel.dataset.row), 'Gestionado por marketplace', sel.value);
+    });
+    cont.querySelectorAll('.mktSelectFull').forEach(sel=>{
+      sel.onchange = ()=> guardarMarcaMarketplace(Number(sel.dataset.row), 'Es Full', sel.value);
+    });
+  };
+
+  document.getElementById('mktBuscar').oninput = pintar;
+  document.getElementById('mktFiltroPendiente').onchange = pintar;
+  pintar();
+}
+
+async function guardarMarcaMarketplace(row, campo, valor){
+  const msg = document.querySelector(`.mktMsg[data-row="${row}"]`);
+  if(msg) msg.innerHTML = '<span style="color:#878785;">Guardando...</span>';
+  const datos = { _row: row };
+  datos[campo] = valor;
+  const res = await llamarBackend({action:'actualizar', data: datos});
+  const fila = dataCache.devoluciones.find(d=>d._row===row);
+  if(fila) fila[campo] = valor;
+  if(msg) msg.innerHTML = res.ok ? '<span style="color:#1d9e75;">Guardado ✓</span>' : `<span style="color:#c0392b;">${res.error||'Error'}</span>`;
 }
 
 /* ================== USUARIOS (solo admin) ================== */
