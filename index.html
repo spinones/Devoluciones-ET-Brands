@@ -194,7 +194,8 @@ const ICONOS_NAV = {
   recibir: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M3 12h18"/></svg>`,
   gestionar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>`,
   reportes: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M12 20V4M20 20v-7"/><path d="M2 20h20"/></svg>`,
-  usuarios: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><circle cx="17.5" cy="8.3" r="2.4"/><path d="M17 14.8c2.7.3 4.5 2 4.5 4.9"/></svg>`
+  usuarios: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><circle cx="17.5" cy="8.3" r="2.4"/><path d="M17 14.8c2.7.3 4.5 2 4.5 4.9"/></svg>`,
+  consultar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/></svg>`
 };
 
 function itemsNav(){
@@ -202,7 +203,8 @@ function itemsNav(){
     { id:'home', label:'Inicio' },
     { id:'recibir', label:'Recibir' },
     { id:'gestionar', label:'Pendientes' },
-    { id:'reportes', label:'Reportes' }
+    { id:'reportes', label:'Reportes' },
+    { id:'consultar', label:'Consultar' }
   ];
   if(sesion && sesion.rol==='admin') items.push({ id:'usuarios', label:'Usuarios' });
   return items;
@@ -266,6 +268,7 @@ function render(){
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
   if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
   if (pantalla==='reportes') { main.innerHTML = vistaReportes(); ligarReportes(); }
+  if (pantalla==='consultar') { main.innerHTML = vistaConsultar(); ligarConsultar(); }
   if (pantalla==='cambiarClave') { main.innerHTML = vistaCambiarClave(); ligarCambiarClave(); }
   if (pantalla==='usuarios' && sesion.rol==='admin') { main.innerHTML = vistaUsuarios(); ligarUsuarios(); }
 }
@@ -1040,6 +1043,153 @@ function ligarCambiarClave(){
       msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
     }
   };
+}
+
+/* ================== CONSULTAR (para SAC u operaciones) ================== */
+function vistaConsultar(){
+  return `
+    <div class="card">
+      <h3 style="margin-top:0;">Consultar orden</h3>
+      <p style="font-size:12px;color:#878785;margin-top:-6px;">Busca en vivo directo contra ProfitGuard. Si tienes el número de orden, la búsqueda es rápida y exacta. Sin número de orden, agrega al menos estado, marketplace o SKU para no demorar demasiado.</p>
+      <div class="filtros-reporte">
+        <div>
+          <label>Número de orden</label>
+          <input id="cNumeroOrden" placeholder="Ej: 2000013836507741">
+        </div>
+        <div>
+          <label>SKU</label>
+          <input id="cSku" placeholder="Ej: BICE001">
+        </div>
+        <div>
+          <label>Marketplace</label>
+          <select id="cMarketplace">
+            <option value="">Todos</option>
+            <option value="mercado libre">MELI</option>
+            <option value="falabella">Falabella</option>
+            <option value="walmart">Walmart</option>
+            <option value="paris">Paris</option>
+            <option value="ripley">Ripley</option>
+          </select>
+        </div>
+        <div>
+          <label>Estado</label>
+          <select id="cEstado">
+            <option value="">Todos</option>
+            <option value="paid">Pagada</option>
+            <option value="cancelled">Cancelada</option>
+            <option value="refunded">Reembolsada</option>
+            <option value="in_mediation">En mediación</option>
+          </select>
+        </div>
+      </div>
+      <div class="filtros-reporte" style="margin-top:10px;">
+        <div>
+          <label>Desde (opcional)</label>
+          <input id="cDesde" type="date">
+        </div>
+        <div>
+          <label>Hasta (opcional)</label>
+          <input id="cHasta" type="date">
+        </div>
+      </div>
+      <button class="btn" id="btnBuscarOrdenes" style="margin-top:10px;">Buscar</button>
+      <div id="msgConsultar"></div>
+    </div>
+    <div id="resultadosConsultar"></div>
+  `;
+}
+
+function ligarConsultar(){
+  document.getElementById('btnBuscarOrdenes').onclick = async ()=>{
+    const numeroOrden = document.getElementById('cNumeroOrden').value.trim();
+    const sku = document.getElementById('cSku').value.trim();
+    const marketplace = document.getElementById('cMarketplace').value;
+    const status = document.getElementById('cEstado').value;
+    const from = document.getElementById('cDesde').value;
+    const to = document.getElementById('cHasta').value;
+    const msg = document.getElementById('msgConsultar');
+    const resultados = document.getElementById('resultadosConsultar');
+
+    if(!numeroOrden && !sku && !marketplace && !status && !from){
+      msg.innerHTML = '<div class="msg err">Agrega al menos un filtro además de las fechas — una búsqueda totalmente abierta puede demorar varios minutos.</div>';
+      return;
+    }
+
+    msg.innerHTML = '<div class="msg">Buscando en ProfitGuard, puede tardar unos segundos...</div>';
+    resultados.innerHTML = '';
+    const res = await llamarBackend({action:'buscarOrdenes', data:{ numeroOrden, sku, marketplace, status, from, to }});
+    if(!res.ok){
+      msg.innerHTML = `<div class="msg err">${res.error||'Error al buscar'}</div>`;
+      return;
+    }
+    if(res.items.length === 0){
+      msg.innerHTML = '<div class="msg err">No se encontraron órdenes con esos filtros.</div>';
+      return;
+    }
+    msg.innerHTML = `<div class="msg ok">${res.items.length} orden(es) encontrada(s)${res.totalEncontradas > res.items.length ? ' (mostrando las primeras 30)' : ''}.</div>`;
+    resultados.innerHTML = res.items.map(pintarTarjetaOrden).join('');
+  };
+}
+
+const ETIQUETAS_STATUS = { paid:'Pagada', cancelled:'Cancelada', refunded:'Reembolsada', in_mediation:'En mediación' };
+
+function pintarTarjetaOrden(o){
+  const fila = dataCache.devoluciones.find(d => String(d['Numero de orden']).trim() === String(o.externalId).trim());
+  const statusLabel = o.statusLabel || ETIQUETAS_STATUS[o.status] || o.status || '';
+  const colorStatus = o.status==='in_mediation' ? '#c0392b' : (o.status==='cancelled' ? '#ba7517' : '#1d9e75');
+
+  const productos = (o.orderItems||[]).map(it=>`
+    <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f2f2f0;font-size:12px;">
+      <span>${it.product ? it.product.name : ''} <b>(${it.product ? it.product.sku : ''})</b></span>
+      <span>x${it.quantity} · ${it.totalPrice ? it.totalPrice.formattedValue : ''}</span>
+    </div>`).join('');
+
+  return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px;">
+        <div>
+          <h4 style="margin:0;">Orden ${o.externalId}</h4>
+          <span style="font-size:12px;color:#878785;">${o.date||''} · ${(o.integration&&o.integration.name)||'marketplace desconocido'} · ${o.logisticTypeLabel||o.logisticType||''}</span>
+        </div>
+        <span class="pill" style="background:${colorStatus}22;color:${colorStatus};">${statusLabel}</span>
+      </div>
+
+      <div style="margin-top:12px;">
+        <b style="font-size:13px;">Productos</b>
+        ${productos || '<p style="font-size:12px;color:#878785;">Sin detalle de productos.</p>'}
+      </div>
+
+      <div class="grid-2" style="margin-top:12px;">
+        <div>
+          <b style="font-size:13px;">Cliente</b>
+          <p style="font-size:12px;color:#878785;margin:4px 0 0;">
+            ${o.customer ? `${o.customer.name||''}<br>${o.customer.documentType?.toUpperCase()||''} ${o.customer.documentNumber||''}<br>${o.customer.address||''}, ${o.customer.city||''}` : 'Sin datos de cliente'}
+          </p>
+        </div>
+        <div>
+          <b style="font-size:13px;">Montos</b>
+          <p style="font-size:12px;color:#878785;margin:4px 0 0;">
+            Total: ${o.totalAmount ? o.totalAmount.formattedValue : '—'}<br>
+            Comisión: ${o.commission ? o.commission.formattedValue : '—'}<br>
+            Envío: ${o.shippingCost ? o.shippingCost.formattedValue : '—'}<br>
+            Ingreso neto: ${o.realIncome ? o.realIncome.formattedValue : '—'}
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px;">
+        <b style="font-size:13px;">En nuestra bodega</b>
+        ${fila ? `
+          <p style="font-size:12px;color:#878785;margin:4px 0 0;">
+            Estado de gestión: <b>${fila['Estado de gestion']||'—'}</b> ·
+            Clasificación: <b>${fila.Clasificacion||'—'}</b> ·
+            Fecha recepción: <b>${fila['Fecha recepcion bodega']||'—'}</b> ·
+            Responsable: <b>${fila.Responsable||'—'}</b>
+          </p>
+        ` : `<p style="font-size:12px;color:#878785;margin:4px 0 0;">Todavía no hay ninguna fila registrada para esta orden en la planilla.</p>`}
+      </div>
+    </div>
+  `;
 }
 
 /* ================== USUARIOS (solo admin) ================== */
