@@ -952,7 +952,12 @@ function pintarChartClasificacion(filas){
         datalabels:{
           color:'#fff',
           font:{weight:'700', size:12},
-          formatter:(valor)=> valor > 0 ? valor : ''
+          formatter:(valor, ctx)=>{
+            if(valor <= 0) return '';
+            const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+            const pct = total ? Math.round((valor/total)*100) : 0;
+            return `${valor} (${pct}%)`;
+          }
         }
       }
     }
