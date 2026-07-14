@@ -841,7 +841,10 @@ function vistaReportes(){
     </div>
 
     <div class="card">
-      <h4 style="margin-top:0;">Detalle <span id="tituloDetalle" style="color:#878785;font-weight:400;font-size:12px;"></span></h4>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <h4 style="margin:0;">Detalle <span id="tituloDetalle" style="color:#878785;font-weight:400;font-size:12px;"></span></h4>
+        <button id="btnDescargarExcel" class="btn secundario" style="width:auto;padding:8px 16px;margin-bottom:0;">⬇ Descargar Excel</button>
+      </div>
       <div class="tabla-scroll">
         <table class="tabla-reporte">
           <thead><tr>
@@ -859,7 +862,32 @@ function ligarReportes(){
     document.getElementById(id).addEventListener('input', actualizarReportes);
     document.getElementById(id).addEventListener('change', actualizarReportes);
   });
+  document.getElementById('btnDescargarExcel').onclick = descargarDetalleExcel;
   actualizarReportes();
+}
+
+function descargarDetalleExcel(){
+  const columnas = ['Numero de orden','SKU','MarketPlace','Fecha recepcion bodega','Clasificacion','Estado de gestion','Responsable'];
+  const encabezados = ['Orden','SKU','Marketplace','Fecha recepción','Clasificación','Estado','Responsable'];
+  const escaparCelda = (valor)=>{
+    const texto = (valor===undefined || valor===null) ? '' : String(valor);
+    if(/[",;\n]/.test(texto)) return '"' + texto.replace(/"/g,'""') + '"';
+    return texto;
+  };
+  const filasCSV = [encabezados.join(';')];
+  filasReporteActual.forEach(d=>{
+    filasCSV.push(columnas.map(c => escaparCelda(c==='Fecha recepcion bodega' ? fechaEfectiva(d) : d[c])).join(';'));
+  });
+  const contenido = '\uFEFF' + filasCSV.join('\r\n'); // BOM para que Excel reconozca tildes bien
+  const blob = new Blob([contenido], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reporte_devoluciones_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function actualizarReportes(){
@@ -994,9 +1022,11 @@ function pintarChartMarketplace(filas){
   });
 }
 
+let filasReporteActual = [];
 function pintarTablaDetalle(filas){
   document.getElementById('tituloDetalle').textContent = `(mostrando ${Math.min(filas.length,200)} de ${filas.length})`;
   const ordenadas = filas.slice().sort((a,b)=> new Date(fechaEfectiva(b)) - new Date(fechaEfectiva(a)));
+  filasReporteActual = ordenadas;
   document.getElementById('filasDetalleReporte').innerHTML = ordenadas.slice(0,200).map(d=>`
     <tr>
       <td>${d['Numero de orden']}</td>
