@@ -131,6 +131,19 @@ async function sha256(texto){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
+// Devuelve fecha y hora de Chile (America/Santiago) legibles, ej: "2026-07-14 15:32:07",
+// sin depender de que el reloj/zona horaria del celular u computador este bien configurado.
+function marcaTiempoLocal(){
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+    hour12: false, hourCycle: 'h23'
+  }).formatToParts(new Date());
+  const obtener = (tipo)=> partes.find(p=>p.type===tipo).value;
+  return `${obtener('year')}-${obtener('month')}-${obtener('day')} ${obtener('hour')}:${obtener('minute')}:${obtener('second')}`;
+}
+
 async function llamarBackend(payload){
   const res = await fetch(APPS_SCRIPT_URL, {
     method:'POST',
@@ -633,7 +646,7 @@ function formularioRecepcion(orden, sku){
       Especificacion: document.getElementById('fEspecificacion').value,
       Clasificacion: document.getElementById('fClasificacion').value,
       'Estado de gestion': document.getElementById('fEstadoGestion').value,
-      'Fecha recepcion bodega': hoy,
+      'Fecha recepcion bodega': marcaTiempoLocal(),
       Responsable: sesion.nombre
     };
     const msg = document.getElementById('msgGuardar');
