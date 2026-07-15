@@ -144,6 +144,37 @@ function marcaTiempoLocal(){
   return `${obtener('year')}-${obtener('month')}-${obtener('day')} ${obtener('hour')}:${obtener('minute')}:${obtener('second')}`;
 }
 
+// Normaliza cualquier valor de fecha/hora que venga de la planilla a hora de Chile,
+// tanto para mostrar (horaTexto) como para comparar solo el dia calendario (fecha).
+// Necesario porque Google Sheets convierte el texto que guardamos en un Date real,
+// y Apps Script lo devuelve en UTC (con "Z") - hay que traducirlo de vuelta.
+function normalizarFechaChile(valor){
+  if(!valor) return { fecha:'', horaTexto:'' };
+  const texto = String(valor);
+
+  // Ya viene en nuestro propio formato "YYYY-MM-DD HH:mm:ss" (sin Z) - no hay zona que traducir.
+  const matchSimple = texto.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/);
+  if(matchSimple) return { fecha: matchSimple[1], horaTexto: texto };
+
+  // Viene como ISO con hora (lo convirtio Google Sheets a Date, y se serializo en UTC) - traducir a Chile.
+  if(/^\d{4}-\d{2}-\d{2}T/.test(texto)){
+    const d = new Date(texto);
+    if(!isNaN(d.getTime())){
+      const partes = new Intl.DateTimeFormat('en-CA', {
+        timeZone:'America/Santiago', year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, hourCycle:'h23'
+      }).formatToParts(d);
+      const obtener = t => partes.find(p=>p.type===t).value;
+      const fecha = `${obtener('year')}-${obtener('month')}-${obtener('day')}`;
+      const hora = `${obtener('hour')}:${obtener('minute')}:${obtener('second')}`;
+      return { fecha, horaTexto: `${fecha} ${hora}` };
+    }
+  }
+
+  // Solo fecha, sin hora (ej: fecha de la orden original) - no hay nada que traducir.
+  return { fecha: texto.slice(0,10), horaTexto: texto };
+}
+
 async function llamarBackend(payload){
   const res = await fetch(APPS_SCRIPT_URL, {
     method:'POST',
@@ -886,7 +917,7 @@ function descargarDetalleExcel(){
     d['Numero de orden'],
     d.SKU,
     d.MarketPlace,
-    fechaEfectiva(d),
+    normalizarFechaChile(fechaEfectiva(d)).horaTexto,
     d.Clasificacion,
     d['Estado de gestion'],
     d.Responsable
@@ -923,7 +954,7 @@ function actualizarReportes(){
   const filtradas = dataCache.devoluciones.filter(d=>{
     const f = fechaEfectiva(d);
     if(!f) return false;
-    const fechaComparable = String(f).slice(0,10);
+    const fechaComparable = normalizarFechaChile(f).fecha;
     if(desde && fechaComparable < desde) return false;
     if(hasta && fechaComparable > hasta) return false;
     if(estado && (d['Estado de gestion']||'') !== estado) return false;
@@ -966,7 +997,7 @@ function pintarKpis(filas){
 function pintarChartTendencia(filas){
   const porDia = {};
   filas.forEach(d=>{
-    const f = String(fechaEfectiva(d)).slice(0,10);
+    const f = normalizarFechaChile(fechaEfectiva(d)).fecha;
     porDia[f] = (porDia[f]||0)+1;
   });
   const dias = Object.keys(porDia).sort();
@@ -1055,7 +1086,7 @@ function pintarTablaDetalle(filas){
       <td>${d['Numero de orden']}</td>
       <td>${d.SKU}</td>
       <td>${d.MarketPlace||''}</td>
-      <td>${fechaEfectiva(d)}</td>
+      <td>${normalizarFechaChile(fechaEfectiva(d)).horaTexto}</td>
       <td>${d.Clasificacion||''}</td>
       <td>${d['Estado de gestion']||''}</td>
       <td>${d.Responsable||''}</td>
@@ -1239,7 +1270,7 @@ function pintarTarjetaOrden(o){
           <p style="font-size:12px;color:#878785;margin:4px 0 0;">
             Estado de gestión: <b>${fila['Estado de gestion']||'—'}</b> ·
             Clasificación: <b>${fila.Clasificacion||'—'}</b> ·
-            Fecha recepción: <b>${fila['Fecha recepcion bodega']||'—'}</b> ·
+            Fecha recepción: <b>${fila['Fecha recepcion bodega'] ? normalizarFechaChile(fila['Fecha recepcion bodega']).horaTexto : '—'}</b> ·
             Responsable: <b>${fila.Responsable||'—'}</b><br>
             Gestionado por marketplace: <b>${fila['Gestionado por marketplace']||'Sin revisar'}</b> ·
             Tipo de orden: <b>${fila['Es Full']==='Si' ? 'Full' : 'Normal'}</b>
@@ -1288,7 +1319,7 @@ function ligarMarketplace(){
         <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <div>
             <b style="font-size:13px;">${d['Numero de orden']} · SKU ${d.SKU}</b><br>
-            <span style="font-size:12px;color:#878785;">${d.MarketPlace||''} · ${d['Fecha recepcion bodega']||d.Fecha||''}</span>
+            <span style="font-size:12px;color:#878785;">${d.MarketPlace||''} · ${d['Fecha recepcion bodega'] ? normalizarFechaChile(d['Fecha recepcion bodega']).horaTexto : (d.Fecha||'')}</span>
           </div>
         </div>
         <div style="display:flex;gap:8px;">
