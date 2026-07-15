@@ -749,25 +749,50 @@ function ligarGestionar(){
       const estado = d['Estado de gestion'] || 'Pendiente recepcion';
       const claseP = estado==='Cerrado' ? 'cerrado' : (estado==='Pendiente recepcion' ? 'pend' : 'ok');
       return `
-        <div class="fila-orden" data-row="${d._row}">
+        <div class="fila-orden" data-row="${d._row}" style="align-items:center;">
           <div class="info">
             <b>${d.SKU} · ${d['Numero de orden']}</b>
             <span>${d.MarketPlace} · ${d.Fecha} · ${d.Clasificacion||''}</span>
           </div>
-          <span class="pill ${claseP}">${estado}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="pill ${claseP}">${estado}</span>
+            <button class="btnFilaEditar" data-row="${d._row}" title="Editar" style="border:1px solid var(--borde);background:#fff;border-radius:6px;padding:6px 8px;cursor:pointer;">✏️</button>
+            <button class="btnFilaEliminar" data-row="${d._row}" title="Eliminar" style="border:1px solid #f3c9c3;background:#fff;border-radius:6px;padding:6px 8px;cursor:pointer;">🗑️</button>
+          </div>
         </div>`;
     }).join('');
-    cont.querySelectorAll('.fila-orden').forEach(f=>{
-      f.onclick = ()=>{
-        const row = Number(f.dataset.row);
+    cont.querySelectorAll('.btnFilaEditar').forEach(b=>{
+      b.onclick = (e)=>{
+        e.stopPropagation();
+        const row = Number(b.dataset.row);
         const item = dataCache.devoluciones.find(d=>d._row===row);
         abrirEdicion(item);
+      };
+    });
+    cont.querySelectorAll('.btnFilaEliminar').forEach(b=>{
+      b.onclick = (e)=>{
+        e.stopPropagation();
+        const row = Number(b.dataset.row);
+        const item = dataCache.devoluciones.find(d=>d._row===row);
+        confirmarEliminarDevolucion(item);
       };
     });
   };
   document.getElementById('filtroEstado').onchange = pintar;
   document.getElementById('filtroSku').oninput = pintar;
   pintar();
+}
+
+async function confirmarEliminarDevolucion(item){
+  const ok = window.confirm(`¿Eliminar definitivamente la orden ${item['Numero de orden']} (SKU ${item.SKU})?\n\nEsto borra la fila completa de la planilla y no se puede deshacer.`);
+  if(!ok) return;
+  const res = await llamarBackend({action:'eliminarDevolucion', data:{ _row: item._row, confirmacion:'ELIMINAR' }});
+  if(res.ok){
+    await cargarDatos();
+    render();
+  } else {
+    alert(res.error || 'No se pudo eliminar.');
+  }
 }
 
 function abrirEdicion(item){
@@ -791,10 +816,12 @@ function abrirEdicion(item){
       </select>
       <button class="btn" id="btnGuardarEdicion">Guardar cambios</button>
       <button class="btn gris" id="btnCancelarEdicion">Cancelar</button>
+      <button class="btn secundario" id="btnEliminarDesdeEdicion" style="border-color:#c0392b;color:#c0392b;">Eliminar esta orden</button>
       <div id="msgEdicion"></div>
     </div>
   `;
   document.getElementById('btnCancelarEdicion').onclick = ()=> render();
+  document.getElementById('btnEliminarDesdeEdicion').onclick = ()=> confirmarEliminarDevolucion(item);
   document.getElementById('btnGuardarEdicion').onclick = async ()=>{
     const datos = {
       _row: item._row,
