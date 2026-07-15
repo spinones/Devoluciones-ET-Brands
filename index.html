@@ -248,7 +248,6 @@ function itemsNav(){
   const items = [
     { id:'home', label:'Inicio' },
     { id:'recibir', label:'Recibir' },
-    { id:'gestionar', label:'Pendientes' },
     { id:'reportes', label:'Reportes' },
     { id:'consultar', label:'Consultar' },
     { id:'marketplace', label:'Marketplace' }
@@ -313,7 +312,6 @@ function render(){
   const main = document.getElementById('main');
   if (pantalla==='home') { main.innerHTML = vistaHome(); ligarHome(); }
   if (pantalla==='recibir') { main.innerHTML = vistaRecibir(); ligarRecibir(); }
-  if (pantalla==='gestionar') { main.innerHTML = vistaGestionar(); ligarGestionar(); }
   if (pantalla==='reportes') { main.innerHTML = vistaReportes(); ligarReportes(); }
   if (pantalla==='consultar') { main.innerHTML = vistaConsultar(); ligarConsultar(); }
   if (pantalla==='marketplace') { main.innerHTML = vistaMarketplace(); ligarMarketplace(); }
@@ -720,83 +718,22 @@ function formularioRecepcion(orden, sku){
   };
 }
 
-/* ================== GESTIONAR PENDIENTES ================== */
-function vistaGestionar(){
-  return `
-    <div class="top-bar">
-      <select id="filtroEstado">
-        <option value="">Todos los estados</option>
-        ${ESTADOS_GESTION.map(e=>`<option value="${e}">${e}</option>`).join('')}
-      </select>
-      <input id="filtroSku" placeholder="Filtrar por SKU">
-    </div>
-    <div id="listaGestion"></div>
-  `;
-}
-function ligarGestionar(){
-  const pintar = ()=>{
-    const filtroEstado = document.getElementById('filtroEstado').value;
-    const filtroSku = document.getElementById('filtroSku').value.trim().toLowerCase();
-    let filas = dataCache.devoluciones.filter(d=>{
-      const estado = d['Estado de gestion'] || 'Pendiente recepcion';
-      if(filtroEstado && estado !== filtroEstado) return false;
-      if(filtroSku && !String(d.SKU).toLowerCase().includes(filtroSku)) return false;
-      return true;
-    });
-    const cont = document.getElementById('listaGestion');
-    if(filas.length===0){ cont.innerHTML = '<p style="color:#878785;font-size:13px;">Sin resultados.</p>'; return; }
-    cont.innerHTML = filas.slice(0,100).map(d=>{
-      const estado = d['Estado de gestion'] || 'Pendiente recepcion';
-      const claseP = estado==='Cerrado' ? 'cerrado' : (estado==='Pendiente recepcion' ? 'pend' : 'ok');
-      return `
-        <div class="fila-orden" data-row="${d._row}" style="align-items:center;">
-          <div class="info">
-            <b>${d.SKU} · ${d['Numero de orden']}</b>
-            <span>${d.MarketPlace} · ${d.Fecha} · ${d.Clasificacion||''}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="pill ${claseP}">${estado}</span>
-            <button class="btnFilaEditar" data-row="${d._row}" title="Editar" style="border:1px solid var(--borde);background:#fff;border-radius:6px;padding:6px 8px;cursor:pointer;">✏️</button>
-            <button class="btnFilaEliminar" data-row="${d._row}" title="Eliminar" style="border:1px solid #f3c9c3;background:#fff;border-radius:6px;padding:6px 8px;cursor:pointer;">🗑️</button>
-          </div>
-        </div>`;
-    }).join('');
-    cont.querySelectorAll('.btnFilaEditar').forEach(b=>{
-      b.onclick = (e)=>{
-        e.stopPropagation();
-        const row = Number(b.dataset.row);
-        const item = dataCache.devoluciones.find(d=>d._row===row);
-        abrirEdicion(item);
-      };
-    });
-    cont.querySelectorAll('.btnFilaEliminar').forEach(b=>{
-      b.onclick = (e)=>{
-        e.stopPropagation();
-        const row = Number(b.dataset.row);
-        const item = dataCache.devoluciones.find(d=>d._row===row);
-        confirmarEliminarDevolucion(item);
-      };
-    });
-  };
-  document.getElementById('filtroEstado').onchange = pintar;
-  document.getElementById('filtroSku').oninput = pintar;
-  pintar();
-}
-
 async function confirmarEliminarDevolucion(item){
   const ok = window.confirm(`¿Eliminar definitivamente la orden ${item['Numero de orden']} (SKU ${item.SKU})?\n\nEsto borra la fila completa de la planilla y no se puede deshacer.`);
   if(!ok) return;
   const res = await llamarBackend({action:'eliminarDevolucion', data:{ _row: item._row, confirmacion:'ELIMINAR' }});
   if(res.ok){
     await cargarDatos();
-    render();
+    const modal = document.getElementById('modalEdicion');
+    if(modal) modal.innerHTML = '';
+    if(typeof actualizarReportes === 'function' && document.getElementById('rDesde')) actualizarReportes();
   } else {
     alert(res.error || 'No se pudo eliminar.');
   }
 }
 
 function abrirEdicion(item){
-  const cont = document.getElementById('listaGestion');
+  const cont = document.getElementById('modalEdicion');
   cont.innerHTML = `
     <div class="card" style="border:2px solid #E94D1A;">
       <h4 style="margin-top:0;">${item.SKU} · ${item['Numero de orden']}</h4>
@@ -820,7 +757,8 @@ function abrirEdicion(item){
       <div id="msgEdicion"></div>
     </div>
   `;
-  document.getElementById('btnCancelarEdicion').onclick = ()=> render();
+  cont.scrollIntoView({behavior:'smooth'});
+  document.getElementById('btnCancelarEdicion').onclick = ()=>{ cont.innerHTML=''; };
   document.getElementById('btnEliminarDesdeEdicion').onclick = ()=> confirmarEliminarDevolucion(item);
   document.getElementById('btnGuardarEdicion').onclick = async ()=>{
     const datos = {
@@ -835,7 +773,10 @@ function abrirEdicion(item){
     if(res.ok){
       msg.innerHTML = '<div class="msg ok">Actualizado.</div>';
       await cargarDatos();
-      setTimeout(render, 700);
+      setTimeout(()=>{
+        cont.innerHTML = '';
+        if(typeof actualizarReportes === 'function' && document.getElementById('rDesde')) actualizarReportes();
+      }, 700);
     } else {
       msg.innerHTML = `<div class="msg err">${res.error||'Error'}</div>`;
     }
@@ -920,12 +861,13 @@ function vistaReportes(){
       <div class="tabla-scroll">
         <table class="tabla-reporte">
           <thead><tr>
-            <th>Orden</th><th>SKU</th><th>Marketplace</th><th>Fecha recepción</th><th>Clasificación</th><th>Estado</th><th>Responsable</th>
+            <th>Orden</th><th>SKU</th><th>Marketplace</th><th>Fecha recepción</th><th>Clasificación</th><th>Estado</th><th>Responsable</th><th>Acciones</th>
           </tr></thead>
           <tbody id="filasDetalleReporte"></tbody>
         </table>
       </div>
     </div>
+    <div id="modalEdicion"></div>
   `;
 }
 
@@ -1117,7 +1059,24 @@ function pintarTablaDetalle(filas){
       <td>${d.Clasificacion||''}</td>
       <td>${d['Estado de gestion']||''}</td>
       <td>${d.Responsable||''}</td>
+      <td style="white-space:nowrap;">
+        <button class="btnFilaEditar" data-row="${d._row}" title="Editar" style="border:1px solid var(--borde);background:#fff;border-radius:6px;padding:5px 7px;cursor:pointer;margin-right:4px;">✏️</button>
+        <button class="btnFilaEliminar" data-row="${d._row}" title="Eliminar" style="border:1px solid #f3c9c3;background:#fff;border-radius:6px;padding:5px 7px;cursor:pointer;">🗑️</button>
+      </td>
     </tr>`).join('');
+
+  document.querySelectorAll('#filasDetalleReporte .btnFilaEditar').forEach(b=>{
+    b.onclick = ()=>{
+      const item = dataCache.devoluciones.find(d=>d._row===Number(b.dataset.row));
+      abrirEdicion(item);
+    };
+  });
+  document.querySelectorAll('#filasDetalleReporte .btnFilaEliminar').forEach(b=>{
+    b.onclick = ()=>{
+      const item = dataCache.devoluciones.find(d=>d._row===Number(b.dataset.row));
+      confirmarEliminarDevolucion(item);
+    };
+  });
 }
 
 /* ================== CAMBIAR CLAVE (cualquier usuario) ================== */
