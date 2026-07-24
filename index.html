@@ -833,6 +833,10 @@ function vistaReportes(){
             ${marketplaces.map(m=>`<option value="${m}">${m}</option>`).join('')}
           </select>
         </div>
+        <div>
+          <label>SKU</label>
+          <input id="rSku" placeholder="Ej: BICE001">
+        </div>
       </div>
     </div>
 
@@ -872,7 +876,7 @@ function vistaReportes(){
 }
 
 function ligarReportes(){
-  ['rDesde','rHasta','rEstado','rClasificacion','rMarketplace'].forEach(id=>{
+  ['rDesde','rHasta','rEstado','rClasificacion','rMarketplace','rSku'].forEach(id=>{
     document.getElementById(id).addEventListener('input', actualizarReportes);
     document.getElementById(id).addEventListener('change', actualizarReportes);
   });
@@ -919,6 +923,7 @@ function actualizarReportes(){
   const estado = document.getElementById('rEstado').value;
   const clasificacion = document.getElementById('rClasificacion').value;
   const marketplace = document.getElementById('rMarketplace').value;
+  const sku = document.getElementById('rSku').value.trim().toLowerCase();
 
   const filtradas = dataCache.devoluciones.filter(d=>{
     const f = fechaEfectiva(d);
@@ -929,6 +934,7 @@ function actualizarReportes(){
     if(estado && (d['Estado de gestion']||'') !== estado) return false;
     if(clasificacion && d.Clasificacion !== clasificacion) return false;
     if(marketplace && d.MarketPlace !== marketplace) return false;
+    if(sku && !String(d.SKU||'').toLowerCase().includes(sku)) return false;
     return true;
   });
 
